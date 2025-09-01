@@ -11,23 +11,27 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-a(zxwi+yg=0_zdcb&#j-wh+#&7fqb%0ch&lfn4i1ac-x&()iyf'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only")
+DEBUG = os.getenv("DEBUG", "1") == "1"
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+QDRANT_URL = "http://localhost:6333"  # Replace with your Qdrant server URL
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")  # Add your API key if required
+QDRANT_COLLECTION = "your_collection_name"  # Replace with your collection name
+QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")  # Path to store Qdrant data
+QDRANT_COLLECTION = "test_collection" 
 # Application definition
 
 INSTALLED_APPS = [
@@ -38,9 +42,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-
-    # Your app
-    'api',
+    "api",
+    "documents",
+    "search",
 ]
 
 MIDDLEWARE = [
@@ -124,3 +128,4 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+

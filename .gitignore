@@ -1,6 +1,6 @@
 # Node
-frontend/.next
 frontend/node_modules
+frontend/.next
 frontend/.env*.local
 
 # Python
@@ -10,11 +10,26 @@ backend/.env
 .venv/
 .env
 
-# Chroma & uploads
+# Qdrant Embedded Data
+backend/qdrant_data/
+
+# Chroma + uploads
 backend/chroma_db/
 backend/media/
+
+# Logs
+*.log
 
 # OS/IDE
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
+
+# Temporary Files
+*.swp
+*.swo
+
+# Python Bytecode
+**/__pycache__/
+**/*.py[cod]
