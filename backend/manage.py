@@ -6,6 +6,7 @@ from pathlib import Path
 
 # Add the project root to the Python path
 sys.path.append(str(Path(__file__).resolve().parent))
+
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
@@ -17,8 +18,12 @@ def main():
             "available on your PYTHONPATH environment variable? Did you "
             "forget to activate a virtual environment?"
         ) from exc
-    execute_from_command_line(sys.argv)
 
+    # Enable threading for concurrent access
+    if 'runserver' in sys.argv:
+        sys.argv.append('--nothreading')
+
+    execute_from_command_line(sys.argv)
 
 if __name__ == '__main__':
     main()
