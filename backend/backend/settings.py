@@ -32,6 +32,8 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")  # Add your API key if required
 #QDRANT_COLLECTION = "test_collection"  # Replace with your collection name
 QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")  # Path to store Qdrant data
 QDRANT_COLLECTION = "test_collection" 
+# Now you can access environment variables with os.environ or os.getenv
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Application definition
 
 INSTALLED_APPS = [

@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 import fitz  # PyMuPDF
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import PointStruct, Distance, VectorParams
 from django.conf import settings
@@ -26,12 +26,8 @@ class AskView(APIView):
         if not question:
             return Response({"error": "Question is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Detect language (optional, based on your requirements)
-        language = detect(question)
-        print(f"Detected language: {language}")
-
         # Step 2: Embed the question
-        embedding_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')  # Replace with Gemini if needed
+        embedding_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')
         question_embedding = embedding_model.embed_texts([question])[0]
 
         # Step 3: Retrieve from Qdrant
@@ -46,21 +42,79 @@ class AskView(APIView):
                 with_payload=True,
                 score_threshold=0.5
             )
-            print(f"Query vector shape: {len(question_embedding)}")
         except Exception as e:
             return Response({"error": f"Error during Qdrant search: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Step 4: Format and return results
-        results = [
+        # Step 4: Rerank results using a cross-encoder
+        reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        rerank_inputs = [(question, result.payload['text']) for result in search_result]
+        rerank_scores = reranker.predict(rerank_inputs)
+
+        # Combine results with scores and sort by relevance
+        reranked_results = [
             {
                 "id": result.id,
-                "score": result.score,
+                "score": rerank_score,
                 "payload": result.payload
             }
-            for result in search_result
+            for result, rerank_score in zip(search_result, rerank_scores)
+        ]
+        reranked_results.sort(key=lambda x: x['score'], reverse=True)
+
+        # Keep top 5–8 results
+        top_results = reranked_results[:8]
+
+        # Step 5: Assemble prompt in Vietnamese
+        system_message = (
+            "Bạn là một trợ lý hữu ích. "
+            "Nếu không tìm thấy câu trả lời trong ngữ cảnh, hãy nói rõ 'Tôi không tìm thấy thông tin trong tài liệu'. "
+            "Khi trả lời, hãy trích dẫn nguồn bằng mã tài liệu và số trang (ví dụ: [doc1 tr.12])."
+        )
+
+        context_blocks = []
+        for result in top_results:
+            ref = f"[{result['payload']['document_id']} tr.{result['payload'].get('page', '?')} #{result['id']}]"
+            context_blocks.append(f"{ref}\n{result['payload']['text']}\n")
+        context_text = "\n".join(context_blocks)
+
+        user_message = f"Câu hỏi: {question}"
+
+
+        # Step 6: Generate response using a chat/completions model
+        from google import generativeai
+        google_api_key = os.getenv("GEMINI_API_KEY")  # Retrieve API key from environment variables
+        if not google_api_key:
+            return Response({"error": "Google API key is not configured."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        generativeai.configure(api_key=google_api_key)
+
+        try:
+            # Use the correct method for generating text
+            model = generativeai.GenerativeModel('gemini-1.5-flash')
+            response_obj = model.generate_content(
+                f"{system_message}\n\nNGỮ CẢNH:\n{context_text}\n\nCâu hỏi: {question}\nCâu trả lời:",
+                generation_config=generativeai.types.GenerationConfig(
+                    temperature=0.2,  # Optional, adjust as needed
+                    max_output_tokens=512  # Optional, adjust as needed
+                )
+            )
+            response = response_obj.text  # Extract the generated text
+        except Exception as e:
+            import logging
+            logging.exception("Error during response generation")
+            return Response({"error": f"An error occurred while generating the response: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Step 7: Map citations to document_id, page, and chunk_id
+        citations = [
+            {
+                "document_id": result['payload']['document_id'],
+                "page": result['payload'].get('page', 'N/A'),
+                "chunk_id": result['id']
+            }
+            for result in top_results
         ]
 
-        return Response({"results": results}, status=status.HTTP_200_OK)
+        return Response({"answer": response, "citations": citations}, status=status.HTTP_200_OK)
 
 
 class FileUploadView(APIView):
