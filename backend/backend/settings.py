@@ -27,13 +27,20 @@ DEBUG = os.getenv("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
-QDRANT_URL = "http://localhost:6333"  # Replace with your Qdrant server URL
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")  # Add your API key if required
-#QDRANT_COLLECTION = "test_collection"  # Replace with your collection name
-QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")  # Path to store Qdrant data
-QDRANT_COLLECTION = "test_collection" 
-# Now you can access environment variables with os.environ or os.getenv
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "test_collection")
+QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")
+
+# Gemini settings
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+# Embeddings settings
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/embedding-001")
+
+# Upload directory
+UPLOAD_DIR = os.path.join(MEDIA_ROOT, os.getenv("UPLOAD_DIR", "uploads"))
 # Application definition
 
 INSTALLED_APPS = [
@@ -44,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     "api",
     "documents",
     "search",
@@ -52,12 +60,17 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Add this
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = True  # Only for development
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -130,4 +143,3 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-

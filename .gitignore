@@ -12,6 +12,7 @@ backend/.env
 
 # Qdrant Embedded Data
 backend/qdrant_data/
+backend/qdrant_storage
 
 # Chroma + uploads
 backend/chroma_db/

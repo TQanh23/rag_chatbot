@@ -1,5 +1,7 @@
 import Image from "next/image";
 import { Geist, Geist_Mono } from "next/font/google";
+import { useEffect } from 'react';
+import { useState } from "react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -11,105 +13,237 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface UploadedFile {
+  name: string;
+  content?: string;
+  uploadTime: Date;
+}
+
 export default function Home() {
+  useEffect(() => {
+    // Add Tahoma font to the document
+    document.body.style.fontFamily = 'Tahoma, sans-serif';
+  }, []);
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [question, setQuestion] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [dbAction, setDbAction] = useState<'init' | 'delete' | null>(null);
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setQuestion('');
+  };
+
+  const handleQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!question.trim() || loading) return;
+
+    try {
+      setLoading(true);
+      // Add user message
+      const userMessage: Message = { role: 'user', content: question };
+      setMessages(prev => [...prev, userMessage]);
+      
+      // Send question to API
+      const response = await fetch('http://localhost:8000/api/ask/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ question: question.trim() }),
+      });
+
+      if (!response.ok) throw new Error('Failed to get answer');
+      
+      const data = await response.json();
+      
+      // Add assistant message
+      const assistantMessage: Message = { role: 'assistant', content: data.answer };
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Clear input
+      setQuestion('');
+    } catch (error) {
+      console.error('Error getting answer:', error);
+      alert('Failed to get answer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      // Read file content if it's a text file
+      let fileContent: string | undefined;
+      if (file.type === 'text/plain') {
+        fileContent = await file.text();
+      }
+
+      const response = await fetch('http://localhost:8000/api/upload/', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        // Add file to uploaded files list
+        setUploadedFiles(prev => [{
+          name: file.name,
+          content: fileContent,
+          uploadTime: new Date()
+        }, ...prev]);
+      } else {
+        alert('Failed to upload file');
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
+    }
+  };
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/pages/index.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+    <div className={`${geistSans.className} ${geistMono.className} min-h-screen flex flex-col`}>
+      {/* Header */}
+      <header className="bg-red-600 text-white p-4 flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Rag Chatbot</h1>
+        <button
+          onClick={handleNewChat}
+          className="px-4 py-2 bg-white text-red-600 rounded-lg hover:bg-gray-100"
+        >
+          New Chat
+        </button>
+      </header>
+
+      <div className="flex flex-1 p-4 gap-4">
+        <div className="flex flex-col flex-1 gap-4">
+          {/* Chat Window */}
+          <div className="flex-1 border rounded-lg p-4 bg-gray-50 min-h-[400px] overflow-y-auto">
+            {messages.length === 0 ? (
+              <div className="text-center text-gray-500">
+                Start a new conversation
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${
+                      message.role === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[80%] p-3 rounded-lg ${
+                        message.role === 'user'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-200 text-gray-800'
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Question Input */}
+          <form onSubmit={handleQuestion} className="flex gap-2">
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Type your question here..."
+              className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              disabled={loading}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <button
+              type="submit"
+              className={`px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+              disabled={loading || !question.trim()}
+            >
+              {loading ? 'Sending...' : 'Send'}
+            </button>
+          </form>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Document Upload Section */}
+        <div className="w-64 border rounded-lg p-4 bg-gray-50">
+          <h2 className="text-lg font-semibold mb-4">Document Upload</h2>
+          <div className="flex flex-col gap-4">
+            <label className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 cursor-pointer text-center">
+              <input 
+                type="file" 
+                onChange={handleFileUpload}
+                className="hidden"
+                accept=".pdf,.txt,.doc,.docx"
+              />
+              Upload File
+            </label>
+            <div className="text-sm text-gray-500 mb-4">
+              Supported formats: PDF, TXT, DOC
+            </div>
+
+            {/* Uploaded Files List */}
+            {uploadedFiles.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold mb-2">Uploaded Files</h3>
+                <div className="max-h-60 overflow-y-auto">
+                  {uploadedFiles.map((file, index) => (
+                    <div key={index} className="mb-4 p-2 border rounded bg-white">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Image
+                            src="/file.svg"
+                            alt="File icon"
+                            width={16}
+                            height={16}
+                          />
+                          <span className="text-sm font-medium truncate">
+                            {file.name}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to remove this file from the list?')) {
+                              setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+                            }
+                          }}
+                          className="p-1 hover:bg-red-100 rounded-full"
+                          title="Remove from list"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        Uploaded: {file.uploadTime.toLocaleString()}
+                      </div>
+                      {file.content && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs max-h-32 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap">{file.content}</pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
