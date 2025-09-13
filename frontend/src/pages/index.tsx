@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Geist, Geist_Mono } from "next/font/google";
+import { useEffect } from 'react';
 import { useState } from "react";
 
 const geistSans = Geist({
@@ -17,10 +18,22 @@ interface Message {
   content: string;
 }
 
+interface UploadedFile {
+  name: string;
+  content?: string;
+  uploadTime: Date;
+}
+
 export default function Home() {
+  useEffect(() => {
+    // Add Tahoma font to the document
+    document.body.style.fontFamily = 'Tahoma, sans-serif';
+  }, []);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [dbAction, setDbAction] = useState<'init' | 'delete' | null>(null);
 
   const handleNewChat = () => {
@@ -65,7 +78,7 @@ export default function Home() {
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -73,13 +86,24 @@ export default function Home() {
     formData.append('file', file);
 
     try {
+      // Read file content if it's a text file
+      let fileContent: string | undefined;
+      if (file.type === 'text/plain') {
+        fileContent = await file.text();
+      }
+
       const response = await fetch('http://localhost:8000/api/upload/', {
         method: 'POST',
         body: formData,
       });
 
       if (response.ok) {
-        alert('File uploaded successfully!');
+        // Add file to uploaded files list
+        setUploadedFiles(prev => [{
+          name: file.name,
+          content: fileContent,
+          uploadTime: new Date()
+        }, ...prev]);
       } else {
         alert('Failed to upload file');
       }
@@ -167,9 +191,56 @@ export default function Home() {
               />
               Upload File
             </label>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 mb-4">
               Supported formats: PDF, TXT, DOC
             </div>
+
+            {/* Uploaded Files List */}
+            {uploadedFiles.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold mb-2">Uploaded Files</h3>
+                <div className="max-h-60 overflow-y-auto">
+                  {uploadedFiles.map((file, index) => (
+                    <div key={index} className="mb-4 p-2 border rounded bg-white">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Image
+                            src="/file.svg"
+                            alt="File icon"
+                            width={16}
+                            height={16}
+                          />
+                          <span className="text-sm font-medium truncate">
+                            {file.name}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to remove this file from the list?')) {
+                              setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+                            }
+                          }}
+                          className="p-1 hover:bg-red-100 rounded-full"
+                          title="Remove from list"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        Uploaded: {file.uploadTime.toLocaleString()}
+                      </div>
+                      {file.content && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs max-h-32 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap">{file.content}</pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
