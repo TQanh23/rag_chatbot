@@ -17,6 +17,18 @@ from documents.models import Document
 from backend.utils.compute_file_hash import compute_file_hash  # Adjusted the import path to match the project structure
 from backend.utils.embeddings import HuggingfaceEmbeddingsModel
 import uuid
+import logging
+import nltk
+from transformers import AutoTokenizer
+from charset_normalizer import detect
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # Adjust log level as needed
+
+# Ensure NLTK resources are downloaded
+nltk.download('punkt')
+
 class AskView(APIView):
     def post(self, request):
         from langdetect import detect
@@ -24,31 +36,53 @@ class AskView(APIView):
         # Step 1: Normalize question
         question = request.data.get("question", "").strip()
         if not question:
+            logger.error("No question provided in the request.")
             return Response({"error": "Question is required."}, status=status.HTTP_400_BAD_REQUEST)
+        logger.info(f"Received question: {question}")
 
         # Step 2: Embed the question
         embedding_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')
         question_embedding = embedding_model.embed_texts([question])[0]
+        logger.debug("Question embedding generated successfully.")
 
         # Step 3: Retrieve from Qdrant
         client = get_qdrant_client()
         collection_name = settings.QDRANT_COLLECTION
 
+        # Get top_k from query parameters or default to 20
+        top_k = int(request.query_params.get("top_k", 20))
+        logger.info(f"Retrieving top {top_k} chunks from Qdrant.")
+
         try:
             search_result = client.search(
                 collection_name=collection_name,
                 query_vector=("default", question_embedding),  # Use named vector format
-                limit=20,
+                limit=top_k,
                 with_payload=True,
                 score_threshold=0.5
             )
+            logger.debug(f"Retrieved {len(search_result)} results from Qdrant.")
+            # Log the retrieved results
+            for i, result in enumerate(search_result):
+                logger.debug(f"Result {i + 1}: ID={result.id}, Score={result.score}, Payload={result.payload}")
         except Exception as e:
+            logger.exception("Error during Qdrant search.")
             return Response({"error": f"Error during Qdrant search: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # DEBUG: show search results
+        logger.debug(f"Search results: {[r.payload['text'][:100] + '...' for r in search_result]}")
 
         # Step 4: Rerank results using a cross-encoder
         reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
         rerank_inputs = [(question, result.payload['text']) for result in search_result]
         rerank_scores = reranker.predict(rerank_inputs)
+        logger.debug("Reranking completed successfully.")
+
+        # Log the rerank inputs
+        logger.debug(f"Rerank inputs: {[(question, result.payload['text'][:100]) for result in search_result]}")
+
+        # Log the rerank scores
+        logger.debug(f"Rerank scores: {rerank_scores}")
 
         # Combine results with scores and sort by relevance
         reranked_results = [
@@ -63,10 +97,20 @@ class AskView(APIView):
 
         # Keep top 5–8 results
         top_results = reranked_results[:8]
+        logger.info(f"Top {len(top_results)} results selected after reranking.")
+
+        # DEBUG: show reranked results
+        logger.debug(f"Reranked results: {[r['payload']['text'][:100] + '...' for r in top_results]}")
+
+        # Log the reranked results
+        for i, result in enumerate(reranked_results):
+            logger.debug(f"Reranked Result {i + 1}: ID={result['id']}, Score={result['score']}, Payload={result['payload']}")
 
         # Step 5: Assemble prompt in Vietnamese
         system_message = (
             "Bạn là một trợ lý hữu ích. "
+            "Hãy trả lời câu hỏi DỰA TRÊN ngữ cảnh được cung cấp bên dưới. "
+            "Nếu ngữ cảnh chứa thông tin liên quan, hãy sử dụng nó để trả lời câu hỏi. "
             "Nếu không tìm thấy câu trả lời trong ngữ cảnh, hãy nói rõ 'Tôi không tìm thấy thông tin trong tài liệu'. "
             "Khi trả lời, hãy trích dẫn nguồn bằng mã tài liệu và số trang (ví dụ: [doc1 tr.12])."
         )
@@ -84,12 +128,15 @@ class AskView(APIView):
         from google import generativeai
         google_api_key = os.getenv("GEMINI_API_KEY")  # Retrieve API key from environment variables
         if not google_api_key:
+            logger.error("Google API key is not configured.")
             return Response({"error": "Google API key is not configured."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         generativeai.configure(api_key=google_api_key)
 
+        # DEBUG: show context sent to LLM
+        logger.debug(f"Context sent to LLM: {context_text[:500]}...")
+
         try:
-            # Use the correct method for generating text
             model = generativeai.GenerativeModel('gemini-1.5-flash')
             response_obj = model.generate_content(
                 f"{system_message}\n\nNGỮ CẢNH:\n{context_text}\n\nCâu hỏi: {question}\nCâu trả lời:",
@@ -98,10 +145,15 @@ class AskView(APIView):
                     max_output_tokens=512  # Optional, adjust as needed
                 )
             )
-            response = response_obj.text  # Extract the generated text
+            # Validate response
+            if not response_obj or not hasattr(response_obj, 'text') or not response_obj.text.strip():
+                logger.error("Invalid response from Gemini API.")
+                return Response({"error": "Invalid response from Gemini API."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            response = response_obj.text.strip()
+            logger.info("Response generated successfully.")
         except Exception as e:
-            import logging
-            logging.exception("Error during response generation")
+            logger.exception("Error during response generation.")
             return Response({"error": f"An error occurred while generating the response: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Step 7: Map citations to document_id, page, and chunk_id
@@ -113,6 +165,7 @@ class AskView(APIView):
             }
             for result in top_results
         ]
+        logger.debug("Citations mapped successfully.")
 
         return Response({"answer": response, "citations": citations}, status=status.HTTP_200_OK)
 
@@ -194,103 +247,54 @@ class FileUploadView(APIView):
 
             # Clean and chunk text
             chunks = self.clean_and_chunk_text(raw_blocks)
+            print(f"Chunks generated: {chunks}")
+            print(f"Number of chunks: {len(chunks)}")
 
             # Generate embeddings using Hugging Face model
             chunk_texts = [chunk['text'] for chunk in chunks]
             model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')
-            # Debug: Print chunk texts
-            print(f"Chunk texts: {chunk_texts}")
-            print(f"Number of chunks: {len(chunk_texts)}")
-
-            # Generate embeddings
             embeddings = model.embed_texts(chunk_texts)  # Batch embedding
-
-            # Debug: Print embedding details
-            for i, embedding in enumerate(embeddings):
-                print(f"Embedding {i}: Type: {type(embedding)}, Length: {len(embedding)}")
+            print(f"Embeddings generated: {embeddings}")
+            print(f"Number of embeddings: {len(embeddings)}")
 
             # Ensure Qdrant collection exists
             client = get_qdrant_client()
             collection_name = settings.QDRANT_COLLECTION
-            #     client.create_collection(
-            #         collection_name=collection_name,
-            #         vectors_config=VectorParams(size=len(embeddings[0]), distance="Cosine")
-            #     )
             try:
-                # Check if the collection exists
-                collection_info = client.get_collection(collection_name)
-                print(f"Collection '{collection_name}' exists: {collection_info}")
+                client.get_collection(collection_name)
             except Exception:
-                # Create the collection if it doesn't exist
                 client.create_collection(
                     collection_name=collection_name,
-                    vectors_config=VectorParams(
-                        size=len(embeddings[0]),  # Dimension of the embedding model
-                        distance=Distance.COSINE  # Use cosine similarity
-                    )
+                    vectors_config={
+                        "default": VectorParams(
+                            size=len(embeddings[0]),
+                            distance=Distance.COSINE
+                        )
+                    }
                 )
 
-            # points = [
-            #     PointStruct(
-            #         id=str(uuid.uuid4()),
-            #         vector=embedding,  # No need to call .tolist() if embedding is already a list
-            #         payload={
-            #             "document_id": chunk["document_id"],
-            #             "page": chunk.get("page"),
-            #             "section": chunk.get("section"),
-            #             "order_index": chunk["order_index"],
-            #             "text": chunk["text"],
-            #             "filename": document.filename,
-            #             "hash": document.hash,
-            #             "created_at": document.uploaded_at.isoformat()
-            #         }
-            #     )
-            #     for chunk, embedding in zip(chunks, embeddings)
-            # ]
-            # for chunk, embedding in zip(chunks, embeddings):
-            #     print(f"Embedding: {embedding}")
-            #     print(f"Type: {type(embedding)}")
-            #     print(f"Length: {len(embedding)}")
-            # client.upsert(collection_name=collection_name, points=points)
-            # Ensure proper point structure with vectors
-                        # Ensure proper point structure with named vectors
-            points = []
-            for chunk, embedding in zip(chunks, embeddings):
-                # Debug: Print embedding info
-                print(f"Embedding type: {type(embedding)}, length: {len(embedding)}")
-            
-                points.append(
-                    PointStruct(
-                        id=str(uuid.uuid4()),  # Generate a unique ID
-                        vector={"default": embedding},  # Use named vector with "default"
-                        payload={
-                            "document_id": chunk["document_id"],
-                            "page": chunk.get("page"),
-                            "section": chunk.get("section"),
-                            "order_index": chunk["order_index"],
-                            "text": chunk["text"],
-                            "filename": document.filename,
-                            "hash": document.hash,
-                            "created_at": document.uploaded_at.isoformat()
-                        }
-                    )
+            # Upload chunks and embeddings to Qdrant
+            points = [
+                PointStruct(
+                    id=str(uuid.uuid4()),  # Generate a valid UUID for each point
+                    vector={"default": embedding},  # Use named vector with "default"
+                    payload=chunk
                 )
-            
-            # Upsert points to Qdrant
+                for embedding, chunk in zip(embeddings, chunks)
+            ]
+            print(f"Points being upserted: {points}")
+            print(f"Number of points: {len(points)}")
+
             response = client.upsert(
-                collection_name=settings.QDRANT_COLLECTION,
+                collection_name=collection_name,
                 points=points
             )
-            
-            # Debug: Print upsert response
             print(f"Upsert response: {response}")
 
             # Update document status and store counts
             from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
             document.token_count = sum(len(tokenizer.encode(chunk['text'], add_special_tokens=False)) for chunk in chunks)
-            document.vector_dim = len(embeddings[0])
-            document.save()
             document.vector_dim = len(embeddings[0])
             document.save()
 
@@ -305,24 +309,6 @@ class FileUploadView(APIView):
                 default_storage.delete(file_path)
             return JsonResponse({"error": str(e)}, status=500)
 
-    def extract_text_from_pdf(self, file_path):
-        """Extract text from a PDF using PyMuPDF."""
-        text = ""
-        with fitz.open(file_path) as pdf:
-            for page in pdf:
-                text += page.get_text()
-        return text
-
-    def extract_text_from_docx(self, file_path):
-        """Extract text from a DOCX file."""
-        from docx import Document as DocxDocument
-        doc = DocxDocument(file_path)
-        return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-
-    def extract_text_from_txt(self, file_path):
-        """Extract text from a TXT file."""
-        with open(file_path, 'r', encoding='utf-8') as file:
-            return file.read()
     def extract_text_and_metadata_from_pdf(self, file_path, document_id):
         """Extract text and metadata from a PDF."""
         raw_blocks = []
@@ -362,14 +348,15 @@ class FileUploadView(APIView):
                         "document_id": document_id
                     })
         return raw_blocks
-    def chunk_text(self, text, chunk_size=500):
-        """Split text into smaller chunks."""
-        words = text.split()
-        chunks = [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
-        return chunks
 
-    def clean_and_chunk_text(self, raw_blocks, chunk_size=1200, overlap=200):
-        """Clean and chunk text into overlapping segments."""
+    def clean_and_chunk_text(self, raw_blocks, target_tokens=400, max_tokens=512, overlap_tokens=100):
+        """
+        Clean and chunk text into overlapping segments using NLTK for sentence tokenization.
+        - Sentence-aware splitting for natural boundaries.
+        - Token-based splitting to enforce token limits.
+        - Enforces a hard cap of 512 tokens per chunk.
+        """
+        tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
         chunks = []
         chunk_id = 0
 
@@ -377,18 +364,74 @@ class FileUploadView(APIView):
             # Normalize whitespace
             text = ' '.join(block['text'].split())
 
-            # Remove headers/footers (example logic, can be customized)
-            lines = text.split('\n')
-            if len(lines) > 2:  # Assume header/footer if more than 2 lines
-                text = '\n'.join(lines[1:-1])
+            # Split text into sentences using NLTK
+            sentences = nltk.sent_tokenize(text)
+            current_chunk = []
+            current_token_count = 0
 
-            # Recursive chunking
-            start = 0
-            while start < len(text):
-                end = min(start + chunk_size, len(text))
-                chunk_text = text[start:end]
+            for sentence in sentences:
+                # Tokenize the sentence
+                sentence_tokens = tokenizer.encode(sentence, add_special_tokens=False)
+                sentence_token_count = len(sentence_tokens)
+                
+                # Handle very long sentences by breaking them down
+                if sentence_token_count > max_tokens:
+                    logger.warning(f"Found sentence with {sentence_token_count} tokens (over the {max_tokens} limit). Splitting sentence.")
+                    # Split the sentence into smaller parts
+                    words = sentence.split()
+                    temp_text = ""
+                    temp_tokens = []
+                    for word in words:
+                        word_tokens = tokenizer.encode(word + " ", add_special_tokens=False)
+                        if len(temp_tokens) + len(word_tokens) > max_tokens:
+                            # Save the current temp_text as a chunk
+                            chunks.append({
+                                "chunk_id": f"chunk_{chunk_id}",
+                                "text": temp_text.strip(),
+                                "document_id": block["document_id"],
+                                "page": block.get("page"),
+                                "section": block.get("section"),
+                                "order_index": chunk_id
+                            })
+                            chunk_id += 1
+                            temp_text = word + " "
+                            temp_tokens = word_tokens
+                        else:
+                            temp_text += word + " "
+                            temp_tokens.extend(word_tokens)
+                    # Add any remaining content
+                    if temp_text:
+                        current_chunk = [temp_text.strip()]
+                        current_token_count = len(tokenizer.encode(temp_text, add_special_tokens=False))
+                    
+                    continue
 
-                # Add chunk metadata
+                # Check if adding this sentence exceeds the max token limit
+                if current_token_count + sentence_token_count > max_tokens:
+                    # Finalize the current chunk
+                    chunk_text = ' '.join(current_chunk)
+                    chunks.append({
+                        "chunk_id": f"chunk_{chunk_id}",
+                        "text": chunk_text,
+                        "document_id": block["document_id"],
+                        "page": block.get("page"),
+                        "section": block.get("section"),
+                        "order_index": chunk_id
+                    })
+                    chunk_id += 1
+
+                    # Start a new chunk with overlap
+                    overlap_start = max(0, len(current_chunk) - overlap_tokens)
+                    current_chunk = current_chunk[overlap_start:] + [sentence]
+                    current_token_count = sum(len(tokenizer.encode(s, add_special_tokens=False)) for s in current_chunk)
+                else:
+                    # Add the sentence to the current chunk
+                    current_chunk.append(sentence)
+                    current_token_count += sentence_token_count
+
+            # Add the last chunk if it contains any text
+            if current_chunk:
+                chunk_text = ' '.join(current_chunk)
                 chunks.append({
                     "chunk_id": f"chunk_{chunk_id}",
                     "text": chunk_text,
@@ -397,9 +440,7 @@ class FileUploadView(APIView):
                     "section": block.get("section"),
                     "order_index": chunk_id
                 })
-
                 chunk_id += 1
-                start += chunk_size - overlap
 
         return chunks
 
@@ -429,3 +470,4 @@ class DeleteQdrantCollectionView(APIView):
             return Response({"message": "Collection deleted."})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
