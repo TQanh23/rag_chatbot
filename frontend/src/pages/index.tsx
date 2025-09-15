@@ -35,6 +35,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [dbAction, setDbAction] = useState<'init' | 'delete' | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
 
   const handleNewChat = () => {
     setMessages([]);
@@ -52,12 +53,15 @@ export default function Home() {
       setMessages(prev => [...prev, userMessage]);
       
       // Send question to API
-      const response = await fetch('http://localhost:8000/api/ask/', {
+      const response = await fetch('/api/proxy/ask', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: question.trim() }),
+        body: JSON.stringify({
+          question: question.trim(),
+          filenames: uploadedFiles.map(file => file.name),
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to get answer');
@@ -83,16 +87,14 @@ export default function Home() {
     if (!file) return;
 
     const formData = new FormData();
-    formData.append('file', file);
-
+    
     try {
-      // Read file content if it's a text file
-      let fileContent: string | undefined;
-      if (file.type === 'text/plain') {
-        fileContent = await file.text();
-      }
+      // Read file as ArrayBuffer for consistent handling
+      const fileBuffer = await file.arrayBuffer();
+      const blob = new Blob([fileBuffer], { type: file.type });
+      formData.append('file', blob, file.name);
 
-      const response = await fetch('http://localhost:8000/api/upload/', {
+      const response = await fetch('/api/proxy/upload', {
         method: 'POST',
         body: formData,
       });
@@ -101,7 +103,6 @@ export default function Home() {
         // Add file to uploaded files list
         setUploadedFiles(prev => [{
           name: file.name,
-          content: fileContent,
           uploadTime: new Date()
         }, ...prev]);
       } else {
@@ -113,25 +114,34 @@ export default function Home() {
     }
   };
 
-  return (
-    <div className={`${geistSans.className} ${geistMono.className} min-h-screen flex flex-col`}>
+  return ( 
+    <div className={`${geistSans.className} min-h-screen flex flex-col transition-colors ${darkMode ? "bg-gray-900 text-gray-100" : "bg-white text-gray-900"}`}>
       {/* Header */}
-      <header className="bg-red-600 text-white p-4 flex justify-between items-center">
+      <header className={`p-4 flex justify-between items-center shadow ${darkMode ? "bg-gray-800 text-white" : "bg-[#2563EB] text-white"}`}>
         <h1 className="text-2xl font-bold">Rag Chatbot</h1>
-        <button
-          onClick={handleNewChat}
-          className="px-4 py-2 bg-white text-red-600 rounded-lg hover:bg-gray-100"
-        >
-          New Chat
-        </button>
+        <div className="flex gap-2">
+          {/* Toggle Dark/Light Mode */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="px-4 py-2 rounded-lg bg-white text-[#2563EB] hover:bg-gray-100 transition-colors font-medium dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+          >
+            {darkMode ? "Light Mode" : "Dark Mode"}
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="px-4 py-2 bg-white text-[#2563EB] rounded-lg hover:bg-gray-100 transition-colors font-medium dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+          >
+            New Chat
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 p-4 gap-4">
         <div className="flex flex-col flex-1 gap-4">
           {/* Chat Window */}
-          <div className="flex-1 border rounded-lg p-4 bg-gray-50 min-h-[400px] overflow-y-auto">
+          <div className={`flex-1 border rounded-lg p-4 min-h-[400px] overflow-y-auto shadow-sm transition-colors ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
             {messages.length === 0 ? (
-              <div className="text-center text-gray-500">
+              <div className="text-center text-gray-500 dark:text-gray-400">
                 Start a new conversation
               </div>
             ) : (
@@ -139,15 +149,13 @@ export default function Home() {
                 {messages.map((message, index) => (
                   <div
                     key={index}
-                    className={`flex ${
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[80%] p-3 rounded-lg ${
+                      className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
                         message.role === 'user'
-                          ? 'bg-red-600 text-white'
-                          : 'bg-gray-200 text-gray-800'
+                          ? "bg-[#DBEAFE] text-[#1E40AF] font-medium dark:bg-blue-600 dark:text-white"
+                          : "bg-[#F3F4F6] text-[#111827] dark:bg-gray-700 dark:text-gray-100"
                       }`}
                     >
                       {message.content}
@@ -165,24 +173,32 @@ export default function Home() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Type your question here..."
-              className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] transition-colors ${
+                darkMode
+                  ? "bg-gray-800 text-white border-gray-600 placeholder-gray-400"
+                  : "bg-white text-[#111827] border-gray-300 placeholder-gray-400"
+              }`}
               disabled={loading}
             />
             <button
               type="submit"
-              className={`px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+              className={`px-4 py-2 rounded-lg transition-colors font-medium ${
+                darkMode
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-[#2563EB] text-white hover:bg-blue-700"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
               disabled={loading || !question.trim()}
             >
-              {loading ? 'Sending...' : 'Send'}
+              {loading ? "Sending..." : "Send"}
             </button>
           </form>
         </div>
 
         {/* Document Upload Section */}
-        <div className="w-64 border rounded-lg p-4 bg-gray-50">
+        <div className={`w-64 border rounded-lg p-4 shadow-sm transition-colors ${darkMode ? "bg-gray-800 border-gray-700" : "bg-[#F9FAFB] border-gray-200"}`}>
           <h2 className="text-lg font-semibold mb-4">Document Upload</h2>
           <div className="flex flex-col gap-4">
-            <label className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 cursor-pointer text-center">
+            <label className="px-4 py-2 bg-[#2563EB] text-white rounded-lg hover:bg-blue-700 cursor-pointer text-center transition-colors font-medium">
               <input 
                 type="file" 
                 onChange={handleFileUpload}
@@ -191,51 +207,33 @@ export default function Home() {
               />
               Upload File
             </label>
-            <div className="text-sm text-gray-500 mb-4">
-              Supported formats: PDF, TXT, DOC
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Supported formats: PDF
             </div>
 
-            {/* Uploaded Files List */}
+            {/* Thêm phần hiển thị uploaded files */}
             {uploadedFiles.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-sm font-semibold mb-2">Uploaded Files</h3>
-                <div className="max-h-60 overflow-y-auto">
+                <h3 className="text-sm font-semibold mb-2">Uploaded Documents:</h3>
+                <div className="space-y-2">
                   {uploadedFiles.map((file, index) => (
-                    <div key={index} className="mb-4 p-2 border rounded bg-white">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Image
-                            src="/file.svg"
-                            alt="File icon"
-                            width={16}
-                            height={16}
-                          />
-                          <span className="text-sm font-medium truncate">
-                            {file.name}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (confirm('Are you sure you want to remove this file from the list?')) {
-                              setUploadedFiles(prev => prev.filter((_, i) => i !== index));
-                            }
-                          }}
-                          className="p-1 hover:bg-red-100 rounded-full"
-                          title="Remove from list"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="text-xs text-gray-500 mb-1">
-                        Uploaded: {file.uploadTime.toLocaleString()}
-                      </div>
-                      {file.content && (
-                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs max-h-32 overflow-y-auto">
-                          <pre className="whitespace-pre-wrap">{file.content}</pre>
-                        </div>
-                      )}
+                    <div 
+                      key={index}
+                      className={`p-2 rounded-lg text-sm flex items-center justify-between ${
+                        darkMode
+                          ? "bg-gray-700 text-gray-200"
+                          : "bg-white text-gray-700 border border-gray-200"
+                      }`}
+                    >
+                      <span className="truncate">{file.name}</span>
+                      <button
+                        onClick={() => {
+                          setUploadedFiles(files => files.filter((_, i) => i !== index));
+                        }}
+                        className="ml-2 text-red-500 hover:text-red-700"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>

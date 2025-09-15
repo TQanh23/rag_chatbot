@@ -1,16 +1,31 @@
 from qdrant_client import QdrantClient
-from django.conf import settings
+from qdrant_client.http.models import VectorParams, Distance
 
-_qdrant_client = None
+# Qdrant server URL
+QDRANT_SERVER_URL = "http://localhost:6333"
+
+# Initialize Qdrant client in server mode
+client = QdrantClient(url=QDRANT_SERVER_URL)
 
 def get_qdrant_client():
-    global _qdrant_client
-    if _qdrant_client is None:
-        # Use Qdrant embedded instance with the specified storage path
-        _qdrant_client = QdrantClient(path=settings.QDRANT_EMBEDDED_PATH)
-         # Connect to Qdrant server running in Docker
-        # _qdrant_client = QdrantClient(
-        #     url=settings.QDRANT_URL,
-        #     api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None
-        # )
-    return _qdrant_client
+    """
+    Returns the Qdrant client instance.
+    """
+    return client
+
+def create_collection(collection_name, vector_size=384, distance=Distance.COSINE):
+    """
+    Creates a collection in Qdrant if it doesn't already exist.
+    """
+    client = get_qdrant_client()
+    collections = client.get_collections()
+    collection_exists = any(collection.name == collection_name for collection in collections.collections)
+
+    if not collection_exists:
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=vector_size, distance=distance)
+        )
+        print(f"Collection '{collection_name}' created successfully.")
+    else:
+        print(f"Collection '{collection_name}' already exists.")
