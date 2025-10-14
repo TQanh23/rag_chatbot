@@ -1,0 +1,170 @@
+{
+  "1e8e6c622bfb571b0b783d8347182318": [
+    {
+      "question": "Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?",
+      "answer": "PTBR (Page-table base register) là một thanh ghi trỏ tới bảng quản lý trang (PCB)[cite: 1]."
+    },
+    {
+      "question": "Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?",
+      "answer": "Khi Mp = 0, điều đó cho biết trang không có trong bộ nhớ, dẫn đến lỗi trang (page fault) và sinh ra một ngắt để hệ điều hành tiến hành nạp trang từ bộ nhớ ngoài vào[cite: 2]."
+    },
+    {
+      "question": "Bộ nhớ được phân cấp dựa trên tiêu chí nào?",
+      "answer": "Bộ nhớ được phân cấp dựa trên tốc độ truy nhập, từ nhanh nhất là các thanh ghi (registers) đến chậm nhất là băng từ hoặc đĩa quang[cite: 3]."
+    },
+    {
+      "question": "Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?",
+      "answer": "Trong cấu trúc nạp động, mỗi modul được biên tập riêng. Khi thực thi, hệ thống sẽ định vị modul gốc, và chỉ khi cần đến modul nào thì hệ thống mới xin cấp phát bộ nhớ và nạp modul đó vào[cite: 15]."
+    },
+    {
+      "question": "Bộ nhớ ảo là gì và nó hoạt động như thế nào?",
+      "answer": "Bộ nhớ ảo là một kỹ thuật cho phép nạp từng phần của chương trình vào bộ nhớ, trong đó một số trang của tiến trình có thể nằm trên đĩa (bộ nhớ thứ cấp). Khi một trang được yêu cầu, nó sẽ được đưa từ bộ nhớ thứ cấp vào bộ nhớ vật lý[cite: 5]."
+    },
+    {
+      "question": "Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là gì?",
+      "answer": "Khi một vùng nhớ được giải phóng, hệ thống sẽ kiểm tra xem có thể kết hợp nó với vùng nhớ kề bên (buddy) có cùng kích thước để tạo ra một vùng trống lớn hơn hay không, và quá trình này được lặp lại liên tiếp[cite: 6]."
+    },
+    {
+      "question": "Kể tên các chiến lược quản lý bộ nhớ được đề cập.",
+      "answer": "Các chiến lược quản lý bộ nhớ bao gồm: chiến lược phân chương cố định, phân chương động, phân đoạn, phân trang, và chiến lược kết hợp phân đoạn-phân trang[cite: 7]."
+    },
+    {
+      "question": "Trong chiến lược phân đoạn, làm thế nào để tính địa chỉ vật lý từ địa chỉ logic có dạng <đoạn, offset>?",
+      "answer": "Để tính địa chỉ vật lý, hệ thống sẽ lấy địa chỉ bắt đầu của đoạn trong bộ nhớ và cộng với giá trị offset. Ví dụ, địa chỉ <3, 345> được tính bằng cách lấy địa chỉ bắt đầu của Đoạn 3 là 3200 cộng với offset 345 để ra địa chỉ 3545[cite: 10]."
+    },
+    {
+      "question": "Nhược điểm của cấu trúc nạp động là gì?",
+      "answer": "Nhược điểm của cấu trúc nạp động bao gồm tốc độ thực hiện chậm, yêu cầu người dùng phải tự quản lý việc nạp và xóa các modul, và giảm tính lưu động của chương trình[cite: 13]."
+    },
+    {
+      "question": "Việc xác định địa chỉ trong chương trình có thể được thực hiện ở những giai đoạn nào?",
+      "answer": "Việc xác định địa chỉ có thể được thực hiện tại ba giai đoạn: giai đoạn dịch (compile time), thời điểm nạp (load time), hoặc trong khi thực hiện (execution time)[cite: 16]."
+    }
+  ],
+  "2d1f518956cdc4b3cf6a9447714cfcd0": [
+    {
+      "question": "Lời gọi hệ thống `Read()` yêu cầu những gì để thực hiện thao tác đọc file?",
+      "answer": "Lời gọi hệ thống `Read()` yêu cầu tên file và một vùng đệm (buffer) để ghi kết quả đọc được vào[cite: 20, 24]."
+    },
+    {
+      "question": "Con trỏ đọc (read pointer) có vai trò gì?",
+      "answer": "Hệ thống lưu một con trỏ đọc để chỉ ra vị trí tiếp theo trong file sẽ được đọc, và vị trí này sẽ thay đổi sau mỗi thao tác đọc dữ liệu[cite: 20, 24]."
+    },
+    {
+      "question": "Làm thế nào để thu gọn một file mà vẫn giữ nguyên các thuộc tính của nó?",
+      "answer": "Để thu gọn file, hệ thống sẽ tìm file trong thư mục, đặt kích thước của file về 0 và giải phóng vùng nhớ đã được cấp phát cho nội dung file đó[cite: 27]."
+    },
+    {
+      "question": "Sector trên đĩa mềm được xác định như thế nào?",
+      "answer": "Một sector trên đĩa mềm có thể được xác định qua tọa độ 3 chiều (Header, Track, Sector) hoặc qua số hiệu sector, là vị trí tương đối so với sector đầu tiên của đĩa[cite: 23, 30]."
+    },
+    {
+      "question": "Cấu trúc vật lý của một đĩa cứng bao gồm những thành phần chính nào?",
+      "answer": "Một đĩa cứng gồm nhiều mặt đĩa. Các rãnh có cùng bán kính trên các mặt đĩa tạo thành một cylinder. Mỗi mặt của mỗi cylinder lại được chia thành các sector[cite: 28]."
+    },
+    {
+      "question": "Hệ thống file FAT bao gồm những thành phần chính nào?",
+      "answer": "Một hệ thống file FAT bao gồm ba thành phần chính: Boot sector, bảng FAT (File Allocation Table), và thư mục gốc."
+    },
+    {
+      "question": "Mỗi phần tử trong bảng FAT tương ứng với điều gì?",
+      "answer": "Mỗi phần tử trong bảng FAT tương ứng với một khối (cluster) trên vùng dữ liệu của đĩa."
+    },
+    {
+      "question": "Thao tác thay đổi vị trí trong file (seek) có yêu cầu hoạt động vào/ra không?",
+      "answer": "Không, thao tác thay đổi vị trí trong file không yêu cầu một hoạt động vào/ra. Nó chỉ đơn giản là thay đổi giá trị của con trỏ file tới một vị trí mới[cite: 26]."
+    },
+    {
+      "question": "Con trỏ ghi (write pointer) được sử dụng để làm gì?",
+      "answer": "Hệ thống sử dụng một con trỏ ghi để chỉ ra vị trí trong file nơi dữ liệu mới sẽ được ghi vào, và con trỏ này sẽ thay đổi sau mỗi thao tác ghi[cite: 29]."
+    },
+    {
+      "question": "Nguyên tắc của phương pháp phân phối vùng lưu trữ kiểu \"Phân phối chỉ mục\" là gì?",
+      "answer": "Nguyên tắc là mỗi file sẽ có một khối chỉ mục chính (index block) chứa danh sách các khối dữ liệu thuộc về file đó."
+    }
+  ],
+  "74040f5628748874779838fa7a292b09": [
+    {
+      "question": "Phân biệt giữa tiến trình (process) và chương trình (program).",
+      "answer": "Chương trình là một thực thể thụ động chứa các chỉ thị, trong khi tiến trình là trạng thái động của một chương trình khi nó đang được thực thi[cite: 48]."
+    },
+    {
+      "question": "Nhiệm vụ của hệ điều hành trong việc quản lý tiến trình là gì?",
+      "answer": "Hệ điều hành có các nhiệm vụ: tạo và hủy tiến trình, ngưng và thực hiện lại tiến trình, cung cấp cơ chế đồng bộ và giao tiếp giữa các tiến trình, và kiểm soát bế tắc[cite: 34]."
+    },
+    {
+      "question": "Kể tên các loại hệ điều hành dựa trên cách chúng hoạt động.",
+      "answer": "Các loại hệ điều hành bao gồm: hệ thống xử lý theo lô (đơn và đa chương trình), hệ thống phân chia thời gian, hệ thống song song, hệ thống phân tán, và hệ thống xử lý thời gian thực[cite: 44]."
+    },
+    {
+      "question": "Hệ thống xử lý theo lô đa chương trình (multiprogrammed batch system) hoạt động như thế nào?",
+      "answer": "Hệ thống này cho phép nhiều chương trình được thực hiện đồng thời. Khi một chương trình phải chờ một thao tác vào/ra, bộ xử lý (processor) sẽ được chuyển giao cho một chương trình khác đang ở trạng thái sẵn sàng, giúp hạn chế thời gian rỗi của processor[cite: 51]."
+    },
+    {
+      "question": "Đặc điểm của hệ điều hành trên máy tính cá nhân trong giai đoạn đầu (thập niên 1980) là gì?",
+      "answer": "Trong giai đoạn đầu, do tài nguyên phần cứng bị giới hạn, hệ điều hành trên máy tính cá nhân rất đơn giản, thường chỉ là một thư viện các thủ tục và chỉ cho phép chạy một chương trình tại một thời điểm (ví dụ như DOS)[cite: 39]."
+    },
+    {
+      "question": "Hệ thống song song kiểu đa xử lý không đối xứng (ASMP) được mô tả như thế nào?",
+      "answer": "Trong hệ thống ASMP, có một bộ xử lý chính kiểm soát toàn bộ hệ thống và lập lịch cho các bộ xử lý khác. Mô hình này hoạt động theo dạng quan hệ chủ-tớ (master-slave)[cite: 43]."
+    },
+    {
+      "question": "Tại sao tính an toàn là một tính chất quan trọng của hệ điều hành?",
+      "answer": "Tính an toàn rất quan trọng, đặc biệt với hệ điều hành đa nhiệm, để đảm bảo dữ liệu và chương trình được bảo vệ, không bị thay đổi ngoài ý muốn và hạn chế các truy nhập bất hợp pháp[cite: 50]."
+    },
+    {
+      "question": "Hệ thống phân tán (distributed system) đối mặt với những vấn đề gì?",
+      "answer": "Các hệ thống phân tán phải đối mặt với các vấn đề như độ trễ truyền thông, băng thông, độ tin cậy và các mối đe dọa từ virus[cite: 42]."
+    },
+    {
+      "question": "Một tiến trình có thể bao gồm những gì?",
+      "answer": "Một tiến trình bao gồm mã lệnh chương trình, dữ liệu của chương trình, ngăn xếp, con trỏ ngăn xếp, các thanh ghi và các thông tin khác cần thiết cho việc thực thi[cite: 48]."
+    },
+    {
+      "question": "Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để làm gì?",
+      "answer": "Do hệ điều hành phải dừng một tiến trình để bắt đầu một tiến trình khác theo chu kỳ, nó cần một bảng tiến trình để lưu trữ thông tin của các tiến trình này[cite: 36]."
+    }
+  ],
+  "a3aa8203ae0398a1ef263322bcadebc3": [
+    {
+      "question": "Hệ điều hành sử dụng hai phương pháp nào để biết khi nào một thiết bị vào/ra hoàn thành yêu cầu?",
+      "answer": "Hệ điều hành sử dụng hai phương pháp: Ngắt (interrupts), trong đó thiết bị sẽ phát tín hiệu cho CPU, và Thăm dò (polling), trong đó hệ điều hành sẽ kiểm tra thanh ghi trạng thái của thiết bị theo chu kỳ[cite: 66, 67]."
+    },
+    {
+      "question": "Bộ điều khiển thiết bị (Device Controller) là gì?",
+      "answer": "Đó là các mạch điện tử kết nối thiết bị ngoại vi với hệ thống máy tính, vì CPU không điều khiển trực tiếp các thiết bị này[cite: 64]."
+    },
+    {
+      "question": "Ngắt (interrupt) là gì?",
+      "answer": "Ngắt là một hiện tượng dừng đột xuất một chương trình đang chạy để chuyển sang thực hiện một chương trình khác nhằm phản ứng với một sự kiện nào đó xảy ra[cite: 69]."
+    },
+    {
+      "question": "Mục đích chính của việc điều phối truy nhập đĩa là gì?",
+      "answer": "Mục đích là để cực tiểu hóa thời gian định vị (seek time), tức là thời gian dịch chuyển của đầu đọc/ghi trên đĩa[cite: 59]."
+    },
+    {
+      "question": "Thuật toán điều phối truy nhập đĩa SSTF có nhược điểm gì?",
+      "answer": "Nhược điểm của SSTF (Shortest Seek Time First) là có thể gây ra tình trạng \"đói\" (starvation), khi một yêu cầu truy nhập ở xa có thể phải đợi vô hạn vì liên tục có các yêu cầu mới xuất hiện ở gần vị trí hiện tại của đầu đọc hơn[cite: 39]."
+    },
+    {
+      "question": "Nguyên tắc hoạt động của thuật toán C-SCAN là gì?",
+      "answer": "Trong thuật toán C-SCAN, đầu từ di chuyển từ ngoài vào trong, phục vụ các yêu cầu gặp trên đường đi. Khi tới cylinder trong cùng, nó sẽ quay ngược lại cylinder ngoài cùng mà không phục vụ yêu cầu nào trên đường quay về. Điều này giúp thời gian đợi đồng nhất hơn so với SCAN[cite: 61]."
+    },
+    {
+      "question": "Thuật toán LOOK khác với thuật toán SCAN như thế nào?",
+      "answer": "Thuật toán LOOK là một phiên bản của SCAN, nhưng đầu đọc không di chuyển đến tận cùng của đĩa (cylinder trong cùng hoặc ngoài cùng) mà chỉ di chuyển đến yêu cầu xa nhất về mỗi phía rồi quay lại ngay[cite: 68]."
+    },
+    {
+      "question": "CPU làm việc với các thanh ghi của bộ điều khiển thiết bị thông qua đâu?",
+      "answer": "CPU sử dụng các không gian địa chỉ đặc biệt được gọi là các cổng vào/ra (I/O ports) để làm việc với các thanh ghi của bộ điều khiển thiết bị[cite: 63]."
+    },
+    {
+      "question": "Hệ thống sẽ làm gì khi phát hiện một lỗi vào/ra?",
+      "answer": "Đầu tiên, hệ thống sẽ cố gắng khắc phục lỗi bằng cách thực hiện lại thao tác nhiều lần. Nếu lỗi vẫn còn, nó sẽ cố gắng khôi phục lại thông tin hoặc báo lỗi[cite: 56]."
+    },
+    {
+      "question": "Theo quan điểm lập trình, một thiết bị vào/ra được xem như là gì?",
+      "answer": "Theo quan điểm lập trình, một thiết bị vào/ra được xem như một giao diện phần mềm có khả năng nhận lệnh, thực hiện lệnh và trả kết quả về[cite: 62]."
+    }
+  ]
+}

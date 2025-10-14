@@ -7,7 +7,7 @@ from documents.models import Document
 from django.core.files.storage import default_storage
 from backend.utils.qdrant_client import get_qdrant_client
 from backend.utils.embeddings import HuggingfaceEmbeddingsModel
-from qdrant_client.http.models import PointStruct, VectorParams, Distance
+from qdrant_client.http.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
 from transformers import AutoTokenizer
 import os
 import uuid
@@ -16,12 +16,22 @@ import fitz
 from django.conf import settings
 import logging
 
+# new import
+from ..tools.chunk_eval import eval_chunks
+from ..tools.export_chunks import write_chunks_csv
+
 logger = logging.getLogger(__name__)
 
 class FileUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
     embeddings_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')  # Initialize once
+    
+    def delete_points_for_document(self, client, collection, document_id):
+        """Delete all vector points for a specific document_id"""
+        flt = Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))])
+        client.delete(collection_name=collection, points_selector=flt)
+        logger.info(f"Deleted existing vector points for document_id: {document_id}")
 
     def post(self, request, *args, **kwargs):
         # Ensure NLTK 'punkt' is available
@@ -61,9 +71,12 @@ class FileUploadView(APIView):
         with open(saved_file_path, "rb") as f:
             file_hash = compute_file_hash(f)
 
+        # Check for force parameter - allows reingestion of the same file
+        force = request.query_params.get("force") == "true"
+        
         # Check for duplicates
         existing_doc = Document.objects.filter(hash=file_hash).first()
-        if existing_doc:
+        if existing_doc and not force:
             default_storage.delete(saved_path)  # Clean up the temporary file
             return Response({
                 'document_id': existing_doc.document_id,
@@ -73,14 +86,31 @@ class FileUploadView(APIView):
                 'hash': existing_doc.hash,
             })
 
-        # Save metadata
-        document = Document.objects.create(
-            document_id=file_hash,
-            filename=file.name,
-            mimetype=file.content_type,
-            size=file.size,
-            hash=file_hash,
-        )
+        # If forcing, reuse the same document_id (hash) and delete existing points
+        if existing_doc and force:
+            client = get_qdrant_client()
+            collection_name = settings.QDRANT_COLLECTION
+            # Remove any leftover points (safe even if collection doesn't exist)
+            try:
+                self.delete_points_for_document(client, collection_name, existing_doc.document_id)
+            except Exception as e:
+                logger.warning(f"Could not delete existing points: {str(e)}")
+
+            # Reset counters on the existing document row
+            existing_doc.token_count = 0
+            existing_doc.vector_dim = None
+            existing_doc.save()
+            document = existing_doc
+            logger.info(f"Force reingestion of document: {document.document_id}")
+        else:
+            # Save metadata (new document)
+            document = Document.objects.create(
+                document_id=file_hash,
+                filename=file.name,
+                mimetype=file.content_type,
+                size=file.size,
+                hash=file_hash,
+            )
 
         try:
             # Extract text and metadata based on file type
@@ -94,9 +124,18 @@ class FileUploadView(APIView):
                 raise ValueError("Unsupported file type")
 
             # Clean and chunk text
-            chunks = self.clean_and_chunk_text(raw_blocks)
+            from ..tools.chunking import clean_and_chunk_text
+            chunks = clean_and_chunk_text(raw_blocks, self.tokenizer)
             logger.debug(f"Chunks generated: {chunks}")
             logger.debug(f"Number of chunks: {len(chunks)}")
+
+            # Evaluate chunking quality before upload
+            try:
+                chunk_stats = eval_chunks(chunks, self.tokenizer, max_tokens=512)
+                logger.info(f"Chunk evaluation: {chunk_stats}")
+            except Exception as eval_exc:
+                logger.exception("Chunk evaluation failed")
+                chunk_stats = {"error": str(eval_exc)}
 
             # Generate embeddings using Hugging Face model
             chunk_texts = [chunk['text'] for chunk in chunks]
@@ -143,10 +182,22 @@ class FileUploadView(APIView):
             document.vector_dim = len(embeddings[0])
             document.save()
 
+            # Write per-document CSV of chunks to MEDIA_ROOT/exports/{document_id}_chunks.csv
+            try:
+                csv_rel = f"exports/{document.document_id}_chunks.csv"
+                csv_abs = os.path.join(settings.MEDIA_ROOT, csv_rel)
+                # ensure exports directory exists
+                os.makedirs(os.path.dirname(csv_abs), exist_ok=True)
+                write_chunks_csv(chunks, csv_abs)
+                logger.info(f"Wrote per-document chunks CSV: {csv_rel}")
+            except Exception as csv_exc:
+                logger.exception(f"Failed to write per-document CSV for {document.document_id}: {str(csv_exc)}")
+
             # Clean up the temporary file
             default_storage.delete(saved_path)
 
-            return Response({"message": "File uploaded and processed successfully", "document_id": document.document_id}, status=status.HTTP_201_CREATED)
+            # return chunk evaluation stats for quick validation (remove in production)
+            return Response({"message": "File uploaded and processed successfully", "document_id": document.document_id, "chunk_eval": chunk_stats}, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             # Clean up the temporary file in case of an error
@@ -194,65 +245,3 @@ class FileUploadView(APIView):
                     })
         return raw_blocks
 
-    def clean_and_chunk_text(self, raw_blocks, target_tokens=400, max_tokens=512, overlap_tokens=100):
-        """
-        Clean and chunk text into overlapping segments using NLTK for sentence tokenization.
-        - Sentence-aware splitting for natural boundaries.
-        - Token-based splitting to enforce token limits.
-        - Enforces a hard cap of 512 tokens per chunk.
-        """
-        tokenizer = self.tokenizer
-        chunks = []
-        chunk_id = 0
-
-        for block in raw_blocks:
-            # Normalize whitespace
-            text = ' '.join(block['text'].split())
-
-            # Split text into sentences using NLTK
-            sentences = nltk.sent_tokenize(text)
-            current_chunk = []
-            current_token_count = 0
-
-            for sentence in sentences:
-                # Tokenize the sentence
-                sentence_tokens = tokenizer.encode(sentence, add_special_tokens=False)
-                sentence_token_count = len(sentence_tokens)
-
-                # Check if adding this sentence exceeds the max token limit
-                if current_token_count + sentence_token_count > max_tokens:
-                    # Finalize the current chunk
-                    chunk_text = ' '.join(current_chunk)
-                    chunks.append({
-                        "chunk_id": f"chunk_{chunk_id}",
-                        "text": chunk_text,
-                        "document_id": block["document_id"],
-                        "page": block.get("page"),
-                        "section": block.get("section"),
-                        "order_index": chunk_id
-                    })
-                    chunk_id += 1
-
-                    # Start a new chunk with overlap
-                    overlap_start = max(0, len(current_chunk) - overlap_tokens)
-                    current_chunk = current_chunk[overlap_start:] + [sentence]
-                    current_token_count = sum(len(tokenizer.encode(s, add_special_tokens=False)) for s in current_chunk)
-                else:
-                    # Add the sentence to the current chunk
-                    current_chunk.append(sentence)
-                    current_token_count += sentence_token_count
-
-            # Add the last chunk if it contains any text
-            if current_chunk:
-                chunk_text = ' '.join(current_chunk)
-                chunks.append({
-                    "chunk_id": f"chunk_{chunk_id}",
-                    "text": chunk_text,
-                    "document_id": block["document_id"],
-                    "page": block.get("page"),
-                    "section": block.get("section"),
-                    "order_index": chunk_id
-                })
-                chunk_id += 1
-
-        return chunks

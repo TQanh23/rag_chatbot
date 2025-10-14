@@ -13,6 +13,32 @@ def get_qdrant_client():
     """
     return client
 
+def collection_exists(collection_name: str) -> bool:
+    """
+    Return True if collection exists, False otherwise.
+    Non-destructive: does not create the collection.
+    """
+    try:
+        collections = client.get_collections()
+        return any(c.name == collection_name for c in collections.collections)
+    except Exception:
+        # Fallback to single-collection check if get_collections fails
+        try:
+            client.get_collection(collection_name=collection_name)
+            return True
+        except Exception:
+            return False
+
+def get_collection_info(collection_name: str):
+    """
+    Return collection info dict or None if not found.
+    """
+    try:
+        info = client.get_collection(collection_name=collection_name)
+        return info.dict()
+    except Exception:
+        return None
+
 def create_collection(collection_name, vector_size=384, distance=Distance.COSINE):
     """
     Creates a collection in Qdrant if it doesn't already exist.
