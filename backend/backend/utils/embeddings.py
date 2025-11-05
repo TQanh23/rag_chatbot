@@ -1,5 +1,7 @@
 import requests
 import os
+import logging
+
 from sentence_transformers import SentenceTransformer
 
 class GeminiEmbeddingsModel:

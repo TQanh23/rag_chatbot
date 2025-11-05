@@ -27,12 +27,18 @@ DEBUG = os.getenv("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
+
+# Qdrant Configuration
 QDRANT_URL = "http://localhost:6333"  # Replace with your Qdrant server URL
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")  # Add your API key if required
-#QDRANT_COLLECTION = "test_collection"  # Replace with your collection name
 QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")  # Path to store Qdrant data
-QDRANT_COLLECTION = "test_collection" 
-# Now you can access environment variables with os.environ or os.getenv
+QDRANT_COLLECTION = "test_collection"
+
+# MongoDB Configuration
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "rag_chatbot")
+
+# Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Application definition
 
