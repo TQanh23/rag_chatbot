@@ -13,6 +13,11 @@ from backend.utils.qdrant_client import QdrantClient
 import pandas as pd
 import logging
 
+# New imports for Gemini rating
+import google.generativeai as genai
+import re
+import time
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -240,6 +245,125 @@ def export_generation_logs_from_mongo(question_to_id, doc_questions, gold_df, up
         traceback.print_exc()
         return None, 0
 
+# New helper: rate generation outputs with Gemini model (1-5)
+def rate_generation_with_gemini(gen_csv_path, gold_df, model_name=None, api_key=None, sleep_between_calls=0.15):
+    """
+    For each generated answer in gen_csv_path, call Gemini to rate against gold answer on a 1-5 scale.
+    Matches questions by question_text, not question_id.
+    Returns path to CSV with appended 'gemini_rating' column and summary statistics.
+    """
+    try:
+        if not api_key:
+            logger.warning("GEMINI_API_KEY not set - skipping Gemini rating")
+            return None, {}
+        
+        # configure client
+        genai.configure(api_key=api_key)
+        
+        # normalize model name
+        if not model_name:
+            model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        
+        # use generative_ai model directly
+        model = genai.GenerativeModel(model_name)
+        
+        df = pd.read_csv(gen_csv_path)
+        
+        # Map question_text -> gold_answer (from gold_df) for matching
+        gold_map = {}
+        if 'question_text' in gold_df.columns and 'gold_answer' in gold_df.columns:
+            gold_map = dict(zip(gold_df['question_text'], gold_df['gold_answer']))
+        
+        ratings = []
+        raw_outputs = []
+        
+        for idx, row in df.iterrows():
+            qtext = str(row.get('question_text', '') or '').strip()
+            gen_ans = str(row.get('generated_answer', '') or '').strip()
+            gold_ans = str(gold_map.get(qtext, '') or '').strip()
+            
+            if not gen_ans:
+                ratings.append(None)
+                raw_outputs.append("EMPTY_GENERATED_ANSWER")
+                logger.debug(f"  [{idx}] Skipped: empty generated answer")
+                continue
+            
+            if not gold_ans:
+                ratings.append(None)
+                raw_outputs.append("GOLD_ANSWER_NOT_FOUND")
+                logger.debug(f"  [{idx}] Skipped: no matching gold answer for '{qtext[:50]}...'")
+                continue
+            
+            prompt = (
+                "You are an objective evaluator. Compare the generated answer to the reference (gold) answer "
+                "and assign a single integer rating from 1 to 5 where:\n"
+                "5 = Generated answer fully matches the reference in correctness, completeness and relevance\n"
+                "4 = Generated answer is mostly correct with minor omissions\n"
+                "3 = Generated answer has moderate issues or partial correctness\n"
+                "2 = Generated answer is mostly incorrect or incomplete\n"
+                "1 = Generated answer is incorrect or irrelevant\n\n"
+                f"Reference (gold): \"{gold_ans}\"\n\n"
+                f"Generated answer: \"{gen_ans}\"\n\n"
+                "Respond with ONLY a single digit (1-5) and nothing else."
+            )
+            
+            try:
+                # Use content.parts[0].text to extract response
+                response = model.generate_content(prompt)
+                text = response.text.strip() if response.text else ""
+                
+                raw_outputs.append(text)
+                
+                # Extract first digit 1-5
+                m = re.search(r'[1-5]', text)
+                if m:
+                    rating = int(m.group(0))
+                    ratings.append(rating)
+                    logger.debug(f"  [{idx}] Rating: {rating}")
+                else:
+                    ratings.append(None)
+                    logger.warning(f"  [{idx}] No valid rating extracted from: {text}")
+                    
+            except Exception as e:
+                logger.warning(f"  [{idx}] Gemini call failed: {e}")
+                ratings.append(None)
+                raw_outputs.append(f"ERROR: {str(e)}")
+            
+            time.sleep(sleep_between_calls)
+        
+        df['gemini_rating'] = ratings
+        df['gemini_raw'] = raw_outputs
+        
+        out_path = gen_csv_path.replace('.csv', '_gemini_rated.csv')
+        df.to_csv(out_path, index=False)
+        
+        # summary statistics
+        valid_ratings = [r for r in ratings if isinstance(r, int)]
+        rating_dist = {}
+        for i in range(1, 6):
+            rating_dist[str(i)] = valid_ratings.count(i)
+        
+        summary = {
+            "count": len(ratings),
+            "rated": len(valid_ratings),
+            "mean_rating": float(sum(valid_ratings) / len(valid_ratings)) if valid_ratings else None,
+            "rating_distribution": rating_dist
+        }
+        
+        logger.info(f"✓ Gemini rating saved to {out_path}")
+        logger.info(f"  Rated: {summary['rated']}/{summary['count']}")
+        if summary['mean_rating']:
+            logger.info(f"  Mean rating: {summary['mean_rating']:.2f}")
+        logger.info(f"  Distribution: {rating_dist}")
+        
+        return out_path, summary
+        
+    except Exception as e:
+        logger.error(f"Failed to rate with Gemini: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, {}
+
 # Main execution - multi-document support
 print("=" * 80)
 print("RAG CHATBOT EVALUATION - Multi Document Mode")
@@ -265,7 +389,8 @@ overall = {
     "retrieval_logs_total": 0,
     "generation_logs_total": 0,
     "retrieval_results": {},
-    "generation_results": {}
+    "generation_results": {},
+    "gemini_rating_summaries": {}
 }
 
 for doc_id in gold_docs:
@@ -309,8 +434,25 @@ for doc_id in gold_docs:
     else:
         print("  No retrieval logs to evaluate for this document")
     
-    # Run generation evaluation if we have exported logs
+    # If generation logs exist, optionally run Gemini rating then normal generation metrics
+    gemini_out_path = None
+    gemini_summary = None
     if gen_path and os.path.exists(gen_path):
+        # Attempt Gemini rating (if API key present)
+        gemini_api_key = os.getenv('GEMINI_API_KEY')
+        gemini_model = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        print("Running Gemini rating for generated answers (1-5)...")
+        try:
+            gemini_out_path, gemini_summary = rate_generation_with_gemini(gen_path, gold_df, model_name=gemini_model, api_key=gemini_api_key)
+            overall['gemini_rating_summaries'][doc_id] = gemini_summary
+            if gemini_summary and gemini_summary.get('mean_rating') is not None:
+                print(f"  Gemini mean rating: {gemini_summary['mean_rating']:.3f} (rated {gemini_summary['rated']}/{gemini_summary['count']})")
+            else:
+                print("  Gemini rating produced no numeric scores")
+        except Exception as e:
+            logger.error(f"Gemini rating failed for {doc_id}: {e}")
+        
+        # Run generation evaluation if we have exported logs
         print("Running Generation Evaluation...")
         try:
             generation = GenerationEvaluator.evaluate(qa_gold_path, gen_path)
@@ -334,6 +476,8 @@ print("=" * 80)
 print(f"Documents Evaluated: {overall['documents_evaluated']}")
 print(f"Total Retrieval Logs Mapped: {overall['retrieval_logs_total']}")
 print(f"Total Generation Logs Mapped: {overall['generation_logs_total']}")
+if overall['gemini_rating_summaries']:
+    print("Gemini rating summaries available per document.")
 print()
 print("Per-document retrieval/generation results available in logs and returned objects.")
 print("=" * 80)
