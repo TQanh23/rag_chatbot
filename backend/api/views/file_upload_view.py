@@ -47,13 +47,13 @@ def upload_document(request):
         qdrant_client = QdrantClient()
         
         # If force=true, delete existing collection first
-        if force:
-            try:
-                collection_name = os.environ.get('QDRANT_COLLECTION', 'test_collection')
-                qdrant_client.delete_collection(collection_name)
-                logger.info(f"Deleted existing collection: {collection_name}")
-            except Exception as e:
-                logger.warning(f"Could not delete collection (may not exist): {e}")
+        # if force:
+        #     try:
+        #         collection_name = os.environ.get('QDRANT_COLLECTION', 'test_collection')
+        #         qdrant_client.delete_collection(collection_name)
+        #         logger.info(f"Deleted existing collection: {collection_name}")
+        #     except Exception as e:
+        #         logger.warning(f"Could not delete collection (may not exist): {e}")
         
         # Now initialize/create collection
         qdrant_client.init_collection()
@@ -135,14 +135,14 @@ class FileUploadView(APIView):
 
         # Check for force parameter - allows reingestion of the same file
         force = request.query_params.get("force") == "true"
-        
+        allow_duplicate = request.query_params.get("allow_duplicate", "false").lower() == "true"
+
         # Check for duplicates in Django DB
         existing_doc = Document.objects.filter(hash=file_hash).first()
-        
-        # Also check MongoDB
         existing_mongo_doc = self.mongo_repo.get_document_by_hash(file_hash) if not force else None
-        
-        if existing_doc and not force:
+
+        # Default: if document exists and no force/allow_duplicate, reject
+        if existing_doc and not force and not allow_duplicate:
             default_storage.delete(saved_path)  # Clean up the temporary file
             return Response({
                 'document_id': existing_doc.document_id,
@@ -153,15 +153,16 @@ class FileUploadView(APIView):
                 'message': 'Document already exists'
             })
 
-        # If forcing, reuse the same document_id (hash) and delete existing points
+        # If forcing, reuse the same document_id (hash) and delete existing points only
         if existing_doc and force:
             client = get_qdrant_client()
             collection_name = settings.QDRANT_COLLECTION
-            # Remove any leftover points (safe even if collection doesn't exist)
+            # Remove ONLY this document's vector points from Qdrant (preserve other documents)
             try:
                 self.delete_points_for_document(client, collection_name, existing_doc.document_id)
+                logger.info(f"Deleted Qdrant points for document_id: {existing_doc.document_id}")
             except Exception as e:
-                logger.warning(f"Could not delete existing points: {str(e)}")
+                logger.warning(f"Could not delete existing Qdrant points: {str(e)}")
 
             # Delete existing chunks in MongoDB
             self.mongo_repo.delete_chunks_by_document(existing_doc.document_id)
@@ -172,6 +173,17 @@ class FileUploadView(APIView):
             existing_doc.save()
             document = existing_doc
             logger.info(f"Force reingestion of document: {document.document_id}")
+        elif existing_doc and allow_duplicate:
+            # Create a new document entry even though content hash exists (duplicate allowed)
+            new_doc_id = uuid.uuid4().hex
+            document = Document.objects.create(
+                document_id=new_doc_id,
+                filename=file.name,
+                mimetype=file.content_type,
+                size=file.size,
+                hash=file_hash,
+            )
+            logger.info(f"Created new document entry for duplicate content: {document.document_id}")
         else:
             # Save metadata (new document)
             document = Document.objects.create(
@@ -184,7 +196,7 @@ class FileUploadView(APIView):
         
         # Create MongoDB document entry (will be updated after processing)
         mongo_doc = MongoDocument(
-            document_id=file_hash,
+            document_id=document.document_id,
             filename=file.name,
             content_hash=file_hash,
             mimetype=file.content_type,
@@ -228,14 +240,8 @@ class FileUploadView(APIView):
             client = get_qdrant_client()
             collection_name = settings.QDRANT_COLLECTION
             
-            # If force=true, delete the collection first
-            force = request.query_params.get("force") == "true"
-            if force:
-                try:
-                    client.delete_collection(collection_name)
-                    logger.info(f"Deleted existing collection: {collection_name}")
-                except Exception as e:
-                    logger.warning(f"Could not delete collection (may not exist): {e}")
+            # Do NOT delete collection anymore - only delete specific document's points
+            # This allows multiple documents to coexist in the same collection
             
             # Now create/ensure collection exists
             try:
@@ -368,7 +374,7 @@ class FileUploadView(APIView):
         except Exception as e:
             # Mark document as failed in MongoDB
             try:
-                self.mongo_repo.update_document_status(file_hash, status="failed")
+                self.mongo_repo.update_document_status(document.document_id if 'document' in locals() else file_hash, status="failed")
             except Exception:
                 pass
             
