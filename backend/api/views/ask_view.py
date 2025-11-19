@@ -321,9 +321,8 @@ class AskView(APIView):
             lang = "unknown"
 
         # Step 2: Embed the question
-        embedding_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')
-        # NOTE: For Vietnamese queries, consider switching to 'paraphrase-multilingual-MiniLM-L12-v2' (384-dim)
-        # and reindex the collection with the same model for better recall.
+        embedding_model = HuggingfaceEmbeddingsModel()  # Uses EMBEDDING_MODEL env var or multilingual default
+        # Now using 'paraphrase-multilingual-MiniLM-L12-v2' (384-dim) for better Vietnamese recall
         question_embedding = embedding_model.embed_texts([question])[0]
         logger.debug("Question embedding generated successfully.")
 
@@ -668,7 +667,7 @@ class AskView(APIView):
         )
 
     def retrieve_items(self, query):
-        embedding_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')
+        embedding_model = HuggingfaceEmbeddingsModel()  # Uses EMBEDDING_MODEL env var or multilingual default
         question_embedding = embedding_model.embed_texts([query])[0]
         client = get_qdrant_client()
         collection_name = settings.QDRANT_COLLECTION

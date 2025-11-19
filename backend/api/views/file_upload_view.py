@@ -85,8 +85,10 @@ def upload_document(request):
 
 class FileUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
-    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-    embeddings_model = HuggingfaceEmbeddingsModel('all-MiniLM-L6-v2')  # Initialize once
+    # Use multilingual tokenizer to match embedding model
+    model_name = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+    tokenizer = AutoTokenizer.from_pretrained(f"sentence-transformers/{model_name}")
+    embeddings_model = HuggingfaceEmbeddingsModel()  # Uses EMBEDDING_MODEL env var or multilingual default
     mongo_repo = MongoRepository()  # MongoDB repository
     
     def delete_points_for_document(self, client, collection, document_id):
