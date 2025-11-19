@@ -39,11 +39,14 @@ class GeminiEmbeddingsModel:
         data = response.json()
         return data.get("embeddings", [])
 class HuggingfaceEmbeddingsModel:
-    def __init__(self, model_name):
+    def __init__(self, model_name=None):
         """
         Initialize the Hugging Face Embeddings Model.
-        :param model_name: Name of the embedding model (e.g., 'all-MiniLM-L6-v2').
+        :param model_name: Name of the embedding model. If None, uses EMBEDDING_MODEL env var or defaults to multilingual model.
         """
+        if model_name is None:
+            model_name = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+        self.model_name = model_name
         self.model = SentenceTransformer(model_name)
 
     def embed_texts(self, texts):

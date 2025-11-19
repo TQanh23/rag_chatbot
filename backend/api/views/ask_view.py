@@ -331,7 +331,8 @@ class AskView(APIView):
         collection_name = settings.QDRANT_COLLECTION
 
         # Get top_k and optional score_threshold/final_k from query parameters
-        top_k = int(request.query_params.get("top_k", 20))
+        # Step 6: Two-stage retrieval - retrieve 50 candidates, rerank to top 10
+        top_k = int(request.query_params.get("top_k", 50))
         final_k = int(request.query_params.get("final_k", 10))
         score_threshold_param = request.query_params.get("score_threshold", None)
         initial_threshold = float(score_threshold_param) if score_threshold_param is not None else 0.2
