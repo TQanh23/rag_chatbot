@@ -333,9 +333,9 @@ class AskView(APIView):
 
         # Get top_k and optional score_threshold/final_k from query parameters
         top_k = int(request.query_params.get("top_k", 20))
-        final_k = int(request.query_params.get("final_k", 8))
+        final_k = int(request.query_params.get("final_k", 10))
         score_threshold_param = request.query_params.get("score_threshold", None)
-        initial_threshold = float(score_threshold_param) if score_threshold_param is not None else 0.5
+        initial_threshold = float(score_threshold_param) if score_threshold_param is not None else 0.2
 
         logger.info(f"Retrieving up to {top_k} chunks from Qdrant (initial score_threshold={initial_threshold}).")
 
@@ -447,17 +447,18 @@ class AskView(APIView):
         
         # Step 5: Assemble prompt in Vietnamese
         system_message = (
-            "Bạn là một trợ lý hữu ích. "
-            "Hãy trả lời câu hỏi DỰA TRÊN NGỮ CẢNH được cung cấp bên dưới. "
-            "Chỉ trả lời 'Tôi không tìm thấy thông tin trong tài liệu' khi thật sự không có bằng chứng rõ ràng trong NGỮ CẢNH. "
-            "Khi trả lời, hãy trích dẫn nguồn bằng mã tài liệu và số trang (ví dụ: [doc1 tr.12]). "
-            "Luôn trả lời bằng tiếng Việt."
+            "Bạn là một trợ lý hữu ích chuyên về xử lý thông tin kỹ thuật. "
+            "Trả lời câu hỏi DỰA TRÊN NGỮ CẢNH được cung cấp. "
+            "Nếu câu trả lời yêu cầu kết hợp thông tin từ nhiều phần, hãy tổng hợp chúng một cách rõ ràng. "
+            "Luôn trích dẫn nguồn: [document_id tr.page]. "
+            "Nếu thông tin không có trong tài liệu, hãy nói rõ 'Tôi không tìm thấy thông tin này trong tài liệu.' "
+            "Trả lời bằng tiếng Việt, chi tiết nhưng ngắn gọn."
         )
 
         context_text = self._build_context_text(top_results)
 
         # Hard cap context to avoid zero output due to token budget
-        MAX_CONTEXT_CHARS = 8000
+        MAX_CONTEXT_CHARS = 12000
         if len(context_text) > MAX_CONTEXT_CHARS:
             logger.info(f"Trimming context from {len(context_text)} to {MAX_CONTEXT_CHARS} chars.")
             context_text = context_text[:MAX_CONTEXT_CHARS]
