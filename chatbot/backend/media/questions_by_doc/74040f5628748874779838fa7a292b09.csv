@@ -1,0 +1,11 @@
+question_text
+Phân biệt giữa tiến trình (process) và chương trình (program).
+Nhiệm vụ của hệ điều hành trong việc quản lý tiến trình là gì?
+Kể tên các loại hệ điều hành dựa trên cách chúng hoạt động.
+Hệ thống xử lý theo lô đa chương trình (multiprogrammed batch system) hoạt động như thế nào?
+Đặc điểm của hệ điều hành trên máy tính cá nhân trong giai đoạn đầu (thập niên 1980) là gì?
+Hệ thống song song kiểu đa xử lý không đối xứng (ASMP) được mô tả như thế nào?
+Tại sao tính an toàn là một tính chất quan trọng của hệ điều hành?
+Hệ thống phân tán (distributed system) đối mặt với những vấn đề gì?
+Một tiến trình có thể bao gồm những gì?
+"Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để làm gì?"

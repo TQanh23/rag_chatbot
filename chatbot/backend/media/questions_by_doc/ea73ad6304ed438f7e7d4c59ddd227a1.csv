@@ -1,0 +1,11 @@
+question_text
+Bốn điều kiện cần thiết để xảy ra bế tắc (deadlock) là gì?
+Nhược điểm chính của mô hình luồng ở mức người dùng (User-Level Threads) là gì?
+Kể tên ba phương pháp chính để xử lý bế tắc.
+Thuật toán Người quản lý nhà băng (Banker's Algorithm) hoạt động dựa trên nguyên tắc nào để phòng tránh bế tắc?
+Điều phối CPU không trưng dụng (non-preemptive) xảy ra trong những trường hợp nào?
+"Trong đồ thị cung cấp tài nguyên, điều gì cho thấy hệ thống đã rơi vào trạng thái bế tắc?"
+Kỹ thuật SPOOLing giúp phòng ngừa bế tắc cho các tài nguyên như máy in bằng cách nào?
+Tại sao các phép xử lý P(S) và V(S) trên đèn báo (semaphore) phải là các phép toán không phân chia được (atomic)?
+"Khi sử dụng thuật toán dựa vào đồ thị cung cấp tài nguyên để phòng tránh bế tắc, cung đòi hỏi (claim edge) thể hiện điều gì?"
+"Trong phương pháp khóa trong (lock-in), một tiến trình làm gì để vào đoạn găng?"

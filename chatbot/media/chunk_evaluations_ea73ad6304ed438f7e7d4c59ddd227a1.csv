@@ -1,0 +1,3 @@
+num_docs,num_chunks,avg_tokens_per_chunk,p95_tokens_per_chunk,max_tokens_in_chunk,percent_over_512,avg_token_overlap,p95_token_overlap,distinct_pages,distinct_sections,timestamp
+1,278,157.84,303,380,0.0,11.25,107,278,0,2025-10-15 09:01:37
+1,278,157.84,303,380,0.0,11.25,107,278,0,2025-10-30 02:31:16

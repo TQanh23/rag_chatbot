@@ -1,0 +1,11 @@
+question_text
+"Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?"
+Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?
+Bộ nhớ được phân cấp dựa trên tiêu chí nào?
+Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?
+Bộ nhớ ảo là gì và nó hoạt động như thế nào?
+"Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là gì?"
+Kể tên các chiến lược quản lý bộ nhớ được đề cập.
+"Trong chiến lược phân đoạn, làm thế nào để tính địa chỉ vật lý từ địa chỉ logic có dạng <đoạn, offset>?"
+Nhược điểm của cấu trúc nạp động là gì?
+Việc xác định địa chỉ trong chương trình có thể được thực hiện ở những giai đoạn nào?

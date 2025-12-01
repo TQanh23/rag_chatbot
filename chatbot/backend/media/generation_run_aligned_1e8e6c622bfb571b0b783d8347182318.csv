@@ -1,0 +1,17 @@
+question_id,question_text,generated_answer,citations
+q0001,"Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?","Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng trỏ tới PCB (Page Control Block) [1e8e6c622bfb571b0b783d8347182318 tr.105].",
+q0003,Bộ nhớ được phân cấp dựa trên tiêu chí nào?,Tôi không tìm thấy thông tin trong tài liệu.,
+q0004,Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?,Tôi không tìm thấy thông tin trong tài liệu.,
+q0005,Bộ nhớ ảo là gì và nó hoạt động như thế nào?,"Bộ nhớ ảo là một số trang của tiến trình nằm trên đĩa. Nó hoạt động bằng cách biểu diễn sự có mặt của trang trên đĩa thông qua một bit trong bảng quản lý trang. Khi một trang được yêu cầu, nó sẽ được đưa từ bộ nhớ thứ cấp vào bộ nhớ vật lý. Nếu không có frames tự do, hệ thống sẽ tiến hành đổi trang.",
+q0006,"Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là gì?",Tôi không tìm thấy thông tin trong tài liệu.,
+q0007,Kể tên các chiến lược quản lý bộ nhớ được đề cập.,"Các chiến lược quản lý bộ nhớ được đề cập là:
+*   Chiến lược phân chương cố định
+*   Chiến lược phân chương động
+*   Chiến lược phân đoạn
+*   Chiến lược phân trang
+*   Chiến lược kết hợp phân đoạn-phân trang",
+q0008,"Trong chiến lược phân đoạn, làm thế nào để tính địa chỉ vật lý từ địa chỉ logic có dạng <đoạn, offset>?",Tôi không tìm thấy thông tin trong tài liệu.,
+q0009,Nhược điểm của cấu trúc nạp động là gì?,"Nhược điểm của cấu trúc nạp động bao gồm: tốc độ thực hiện chậm, sai lầm có thể dẫn tới lãng phí bộ nhớ và tăng thời gian thực hiện, yêu cầu người sử dụng phải nạp và xóa các modul, người dùng phải nắm rõ hệ thống, và giảm tính lưu động.",
+q0010,Việc xác định địa chỉ trong chương trình có thể được thực hiện ở những giai đoạn nào?,"Việc xác định địa chỉ trong chương trình có thể được thực hiện ở các giai đoạn sau:
+*   **Giai đoạn dịch:** Sử dụng khi biết chương trình sẽ nằm ở đâu trong bộ nhớ. Khi dịch sẽ sinh ra mã (địa chỉ) tuyệt đối và phải dịch lại khi vị trí bắt đầu thay đổi [1e8e6c622bfb571b0b783d8347182318 tr.20].
+*   **Thời điểm nạp:** Sử dụng khi không biết chương trình sẽ nằm ở đâu trong bộ nhớ. Các đối tượng được dịch ra sẽ mang địa chỉ tương đối và việc xác định địa chỉ được hoãn lại tới khi nạp",

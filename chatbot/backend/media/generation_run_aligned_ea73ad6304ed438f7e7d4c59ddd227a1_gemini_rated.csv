@@ -1,0 +1,16 @@
+question_id,question_text,generated_answer,citations,gemini_rating,gemini_raw
+q0041,Bốn điều kiện cần thiết để xảy ra bế tắc (deadlock) là gì?,"Bốn điều kiện cần thiết để xảy ra bế tắc (deadlock) là:
+*   Tài nguyên găng
+*   Chờ đợi trước khi vào đoạn găng
+*   Trưng dụng tài nguyên găng
+*   Chờ đợi vòng tròn
+[ea73ad6304ed438f7e7d4c59ddd227a1 tr.199]",,2,2
+q0042,Nhược điểm chính của mô hình luồng ở mức người dùng (User-Level Threads) là gì?,Tôi không tìm thấy thông tin trong tài liệu.,,1,1
+q0043,Kể tên ba phương pháp chính để xử lý bế tắc.,"Ba phương pháp chính để xử lý bế tắc là:
+*   Phòng ngừa bế tắc
+*   Phòng tránh bế tắc
+*   Nhận biết và khắc phục",,4,4
+q0045,Điều phối CPU không trưng dụng (non-preemptive) xảy ra trong những trường hợp nào?,Điều phối CPU không trưng dụng (non-preemptive) xảy ra khi tiến trình chuyển từ trạng thái thực hiện sang trạng thái chờ đợi (yêu cầu vào/ra) hoặc khi tiến trình kết thúc [ea73ad6304ed438f7e7d4c59ddd227a1 tr.80].,,5,5
+q0047,Kỹ thuật SPOOLing giúp phòng ngừa bế tắc cho các tài nguyên như máy in bằng cách nào?,Kỹ thuật SPOOLing giúp phòng ngừa bế tắc cho các tài nguyên như máy in bằng cách đảm bảo rằng chỉ một số ít tiến trình có khả năng yêu cầu tài nguyên,,3,3
+q0048,Tại sao các phép xử lý P(S) và V(S) trên đèn báo (semaphore) phải là các phép toán không phân chia được (atomic)?,Các phép xử lý P(S) và V(S) trên đèn báo phải là các phép toán không phân chia được vì bản thân P(S) và V(S) cũng là hai tài nguyên găng và cần được điều độ [ea73ad6304ed438f7e7d4c59ddd227a1 tr.143].,,4,4
+q0050,"Trong phương pháp khóa trong (lock-in), một tiến trình làm gì để vào đoạn găng?","Trong phương pháp khóa trong, để vào đoạn găng, một tiến trình cần kiểm tra",,2,2

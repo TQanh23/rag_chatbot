@@ -1,0 +1,51 @@
+question_id,question_text,generated_answer,citations
+q0001,"Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?",PTBR (Page-table base register) trỏ tới PCB (Page Control Block/Page Table).,
+q0002,Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?,"Khi Mp = 0, xảy ra lỗi trang (page fault), hệ thống sinh một ngắt để tiến hành nạp trang. Sau đó, nó xin trang vật lý tự do, tìm kiếm trang logic ở bộ nhớ ngoài và nạp trang, rồi sửa lại trường địa chỉ A và dấu hiệu M.",
+q0003,Bộ nhớ được phân cấp dựa trên tiêu chí nào?,Bộ nhớ được phân cấp dựa trên tốc độ truy nhập,
+q0004,Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?,"Trong cấu trúc nạp động, mỗi modul được biên tập riêng. Khi thực hiện, hệ thống sẽ định vị modul gốc. Các modul khác chỉ được nạp vào bộ nhớ khi cần tới, bằng cách xin cấp phát bộ nhớ.",
+q0005,Bộ nhớ ảo là gì và nó hoạt động như thế nào?,Bộ nhớ ảo là việc sử dụng bộ nhớ thứ cấp (như đĩa cứng),
+q0006,"Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là gì?","Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là có thể kết hợp hai vùng kề nhau có cùng kích thước và tiếp tục kết hợp liên tiếp cho tới khi tạo ra vùng trống lớn nhất có thể. [1e8e6c622bfb571b0b783d8347182318 tr.67]",
+q0007,Kể tên các chiến lược quản lý bộ nhớ được đề cập.,"Các chiến lược quản lý bộ nhớ được đề cập là:
+*   Chiến lược phân đoạn
+*   Chiến lược phân trang
+*   Chiến lược kết hợp phân đoạn-phân trang",
+q0008,"Trong chiến lược phân đoạn, làm thế nào để tính địa chỉ vật lý từ địa chỉ logic có dạng <đoạn, offset>?","Trong chiến lược phân đoạn, địa chỉ vật lý được tính bằng cách cộng độ lệch (d) với địa chỉ cơ sở của đoạn (As). Công thức là: `offset + As`.",
+q0009,Nhược điểm của cấu trúc nạp động là gì?,"Nhược điểm của cấu trúc nạp động là:
+*   Tốc độ thực hiện chậm
+*   Sai lầm sẽ dẫn tới lãng phí bộ nhớ và tăng thời gian thực hiện
+*   Yêu cầu người sử dụng phải nạp và xóa các modul
+*   Người dùng phải nắm rõ hệ thống
+*   Giảm tính lưu động",
+q0010,Việc xác định địa chỉ trong chương trình có thể được thực hiện ở những giai đoạn nào?,"Việc xác định địa chỉ trong chương trình có thể được thực hiện ở các giai đoạn: Giai đoạn dịch, Thời điểm nạp, và Trong khi thực hiện.",
+q0021,Phân biệt giữa tiến trình (process) và chương trình (program).,Tôi không tìm thấy thông tin trong tài liệu.,
+q0022,Nhiệm vụ của hệ điều hành trong việc quản lý tiến trình là gì?,"Nhiệm vụ của hệ điều hành trong việc quản lý tiến trình bao gồm:
+*   Đảm bảo hoạt động của tiến trình và tiểu trình (luồng).
+*   Tạo/xóa (hoặc hủy) các tiến trình (người dùng, hệ thống).
+*   Điều phối tiến trình.
+*   Ngưng và thực hiện lại một tiến trình.
+*   Cung cấp cơ chế đồng bộ tiến trình.
+*   Cung cấp cơ chế truyền thông (hoặc thông tin) giữa các tiến trình.
+*   Cung cấp cơ chế ngăn ngừa (hoặc kiểm soát) tình trạng bế tắc giữa các tiến trình.",
+q0023,Kể tên các loại hệ điều hành dựa trên cách chúng hoạt động.,"Dựa trên cách chúng hoạt động, các loại hệ điều hành bao gồm:
+*   Hệ thống xử lý theo lô đơn chương trình
+*   Hệ thống xử lý theo lô đa chương trình
+*   Hệ thống phân chia thời gian
+*   Hệ thống song song
+*   Hệ thống phân tán
+*   Hệ thống xử lý thời gian thực",
+q0024,Hệ thống xử lý theo lô đa chương trình (multiprogrammed batch system) hoạt động như thế nào?,Tôi không tìm thấy thông tin trong,
+q0025,Đặc điểm của hệ điều hành trên máy tính cá nhân trong giai đoạn đầu (thập niên 1980) là gì?,"Trong giai đoạn đầu (thập niên 1980), hệ điều hành trên máy tính cá nhân có các đặc điểm sau:
+*   Tài nguyên phần cứng bị giới hạn.
+*   Hệ điều hành trở thành thư viện của các thủ tục cung cấp sẵn.
+*   Chỉ chạy một chương trình tại một thời điểm (ví dụ: DOS).",
+q0026,Hệ thống song song kiểu đa xử lý không đối xứng (ASMP) được mô tả như thế nào?,Hệ,
+q0027,Tại sao tính an toàn là một tính chất quan trọng của hệ điều hành?,"Tính an toàn là một tính chất quan trọng của hệ điều hành vì nó đảm bảo:
+*   Dữ liệu và chương trình được bảo vệ, không bị thay đổi ngoài ý muốn trong mọi chế độ làm việc.
+*   Hạn chế truy nhập bất hợp pháp vào hệ thống.
+*   Các tài nguyên khác nhau có yêu cầu bảo vệ khác nhau và cần được bảo vệ ở nhiều mức với nhiều công cụ khác nhau.
+*   Tính an toàn đặc biệt quan trọng đối với hệ điều hành đa nhiệm.
+
+[74040f5628748874779838fa7a292b09 tr.56]",
+q0028,Hệ thống phân tán (distributed system) đối mặt với những vấn đề gì?,"Hệ thống phân tán đối mặt với các vấn đề như độ trễ truyền thông, băng thông, độ tin cậy và virus.",
+q0029,Một tiến trình có thể bao gồm những gì?,"Một tiến trình có thể bao gồm mã lệnh chương trình, dữ liệu của chương trình (biến toàn cục, biến được cung cấp động, biến stack, thư viện liên kết động), ngăn xếp, con trỏ ngăn xếp, các thanh ghi, các thông tin cần thiết cho việc thực thi chương trình và có thể chứa một hoặc nhiều tiểu trình (luồng).",
+q0030,"Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để làm gì?","Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để lưu thông tin các tiến trình.",

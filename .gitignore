@@ -33,3 +33,4 @@ Thumbs.db
 # Python Bytecode
 **/__pycache__/
 **/*.py[cod]
+.env.docker

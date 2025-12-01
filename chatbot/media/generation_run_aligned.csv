@@ -1,0 +1,83 @@
+timestamp,question_id,document_id,question_text,final_answer_text,num_tokens,generation_time_ms
+2025-10-30T05:24:11.300803,q0011,2d1f518956cdc4b3cf6a9447714cfcd0,Lời gọi hệ thống `Read()` yêu cầu những gì để thực hiện thao tác đọc file?,"Lời gọi hệ thống `Read()` yêu cầu tên file và vùng đệm ghi kết quả (KQ) để thực hiện thao tác đọc file [2d1f518956cdc4b3cf6a9447714cfcd0 tr.14, 15, 16, 17].",,
+2025-10-30T05:36:34.495063,q0001,1e8e6c622bfb571b0b783d8347182318,"Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?","Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng trỏ tới PCB (Page Control Block) [1e8e6c622bfb571b0b783d8347182318 tr.105].",,
+2025-10-30T05:36:50.896061,q0002,a3aa8203ae0398a1ef263322bcadebc3,Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:37:06.294665,q0003,1e8e6c622bfb571b0b783d8347182318,Bộ nhớ được phân cấp dựa trên tiêu chí nào?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:37:23.412634,q0004,1e8e6c622bfb571b0b783d8347182318,Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?,"Trong cấu trúc nạp động, mỗi modul được biên tập riêng. Khi thực hiện, hệ thống sẽ định vị modul gốc. Modul nào cần tới sẽ xin bộ nhớ và được nạp vào. Khi sử dụng xong hoặc khi thiếu vùng nhớ, các modul không cần thiết sẽ được đưa ra ngoài.",,
+2025-10-30T05:37:49.175724,q0005,1e8e6c622bfb571b0b783d8347182318,Bộ nhớ ảo là gì và nó hoạt động như thế nào?,"Bộ nhớ ảo là một số trang của tiến trình nằm trên đĩa. Nó được biểu diễn bằng một bit trong bảng quản lý trang. Khi một trang được yêu cầu, nó sẽ được đưa từ bộ nhớ thứ cấp vào bộ nhớ vật lý. Nếu không có frames tự do, phải tiến hành đổi trang.",,
+2025-10-30T05:38:03.008844,q0006,1e8e6c622bfb571b0b783d8347182318,"Trong chiến lược cấp phát bộ nhớ Buddy Allocation, nguyên tắc thu hồi vùng nhớ là gì?",Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:38:18.115467,q0007,1e8e6c622bfb571b0b783d8347182318,Kể tên các chiến lược quản lý bộ nhớ được đề cập.,"Các chiến lược quản lý bộ nhớ được đề cập là:
+*   Chiến lược phân chương cố định
+*   Chiến lược phân chương động
+*   Chiến lược phân đoạn
+*   Chiến lược phân trang
+*   Chiến lược kết hợp phân đoạn-phân trang",,
+2025-10-30T05:38:36.118522,q0008,1e8e6c622bfb571b0b783d8347182318,"Trong chiến lược phân đoạn, làm thế nào để tính địa chỉ vật lý từ địa chỉ logic có dạng <đoạn, offset>?",Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:38:48.919513,q0009,1e8e6c622bfb571b0b783d8347182318,Nhược điểm của cấu trúc nạp động là gì?,"Nhược điểm của cấu trúc nạp động bao gồm:
+*   Tốc độ thực hiện chậm.",,
+2025-10-30T05:39:03.698083,q0010,1e8e6c622bfb571b0b783d8347182318,Việc xác định địa chỉ trong chương trình có thể được thực hiện ở những giai đoạn nào?,"Việc xác định địa chỉ trong chương trình có thể được thực hiện ở các giai đoạn: giai đoạn dịch, thời điểm nạp, và trong khi thực hiện.",,
+2025-10-30T05:39:15.017334,q0011,2d1f518956cdc4b3cf6a9447714cfcd0,Lời gọi hệ thống `Read()` yêu cầu những gì để thực hiện thao tác đọc file?,"Lời gọi hệ thống `Read()` yêu cầu tên file và vùng đệm ghi kết quả (KQ) để thực hiện thao tác đọc file [2d1f518956cdc4b3cf6a9447714cfcd0 tr.14, 15, 16, 17].",,
+2025-10-30T05:39:29.661133,q0012,2d1f518956cdc4b3cf6a9447714cfcd0,Con trỏ đọc (read pointer) có vai trò gì?,Con trỏ đọc (read pointer) chỉ ra vị trí được đọc và thay đổi sau mỗi thao tác đọc dữ liệu.,,
+2025-10-30T05:39:46.272179,q0013,2d1f518956cdc4b3cf6a9447714cfcd0,Làm thế nào để thu gọn một file mà vẫn giữ nguyên các thuộc tính của nó?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:39:59.166978,q0014,2d1f518956cdc4b3cf6a9447714cfcd0,Sector trên đĩa mềm được xác định như thế nào?,"Sector trên đĩa mềm được xác định qua tọa độ 3 chiều (Header, Track, Sector) hoặc qua số hiệu sector (tọa độ 1 chiều).",,
+2025-10-30T05:40:12.668841,q0015,74040f5628748874779838fa7a292b09,Cấu trúc vật lý của một đĩa cứng bao gồm những thành phần chính nào?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:40:27.878247,q0016,1e8e6c622bfb571b0b783d8347182318,Hệ thống sử dụng loại con trỏ nào cho cả thao tác đọc và ghi?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:40:44.485197,q0017,2d1f518956cdc4b3cf6a9447714cfcd0,"Trong việc định vị thông tin trên đĩa mềm, tọa độ 3 chiều được chuyển đổi sang tọa độ 1 chiều như thế nào?",Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:41:03.123935,q0018,2d1f518956cdc4b3cf6a9447714cfcd0,Thao tác thay đổi vị trí trong file (seek) có yêu cầu hoạt động vào/ra không?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:41:14.766602,q0019,2d1f518956cdc4b3cf6a9447714cfcd0,Con trỏ ghi (write pointer) được sử dụng để làm gì?,Con trỏ ghi (write pointer) được hệ thống lưu trữ để chỉ ra vị trí ghi và thay đổi sau mỗi thao tác ghi [2d1f518956cdc4b3cf6a9447714cfcd0 tr.10].,,
+2025-10-30T05:41:32.515169,q0020,2d1f518956cdc4b3cf6a9447714cfcd0,"Sau khi nhận lời gọi `Read()`, hệ thống làm gì để tìm thấy dữ liệu của file?","Sau khi nhận lời gọi `Read()`, hệ thống thực hiện các bước sau để tìm thấy dữ liệu của file:
+1. Dùng tên file, tìm kiếm file trong thư mục file.
+2. Dựa vào trường vị trí, tìm vị trí của file trên thiết bị lưu trữ.",,
+2025-10-30T05:41:48.026339,q0021,ea73ad6304ed438f7e7d4c59ddd227a1,Phân biệt giữa tiến trình (process) và chương trình (program).,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:42:46.622269,q0023,74040f5628748874779838fa7a292b09,Kể tên các loại hệ điều hành dựa trên cách chúng hoạt động.,"Dựa trên tài liệu, các cấu trúc hệ thống được đề cập là Cấu trúc OS/2 và Máy ảo.",,
+2025-10-30T05:43:03.066826,q0024,74040f5628748874779838fa7a292b09,Hệ thống xử lý theo lô đa chương trình (multiprogrammed batch system) hoạt động như thế nào?,"Hệ thống xử lý theo lô đa chương trình hoạt động bằng cách cho phép thực hiện nhiều chương trình đồng thời. Nó nạp một phần mã và dữ liệu của các chương trình/tiến trình vào bộ nhớ (phần còn lại sẽ được nạp tại thời điểm thích hợp) để chương trình sẵn sàng được thực hiện. Chương trình được thực hiện như hệ thống đơn chương trình, và nếu một chương trình thực hiện vào ra, bộ xử lý sẽ được chuyển giao cho chương trình đang sẵn sàng khác.",,
+2025-10-30T05:43:20.227848,q0025,74040f5628748874779838fa7a292b09,Đặc điểm của hệ điều hành trên máy tính cá nhân trong giai đoạn đầu (thập niên 1980) là gì?,"Trong giai đoạn đầu (thập niên 1980), hệ điều hành trên máy tính cá nhân có các đặc điểm sau:
+*   Tài nguyên phần cứng bị giới hạn.
+*   Hệ điều hành trở thành thư viện của các thủ tục cung cấp sẵn.
+*   Chỉ chạy một chương trình tại một thời điểm (ví dụ: DOS).",,
+2025-10-30T05:43:32.245151,q0026,74040f5628748874779838fa7a292b09,Hệ thống song song kiểu đa xử lý không đối xứng (ASMP) được mô tả như thế nào?,"Hệ thống song song kiểu đa xử lý không đối xứng (ASMP) được mô tả như sau:
+*   Một bộ xử lý chính kiểm soát toàn bộ hệ thống.
+*   Các bộ xử lý khác thực hiện theo lệnh của bộ xử lý chính hoặc theo những chỉ thị đã được định nghĩa trước.
+*   Mô hình này theo dạng quan hệ chủ tớ,",,
+2025-10-30T05:43:49.180802,q0027,74040f5628748874779838fa7a292b09,Tại sao tính an toàn là một tính chất quan trọng của hệ điều hành?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:44:01.365257,q0028,74040f5628748874779838fa7a292b09,Hệ thống phân tán (distributed system) đối mặt với những vấn đề gì?,"Hệ thống phân tán đối mặt với các vấn đề như độ trễ truyền thông, băng thông, độ tin cậy và virus (ví dụ: love letter virus 05/2000) [74040",,
+2025-10-30T05:44:16.438081,q0029,ea73ad6304ed438f7e7d4c59ddd227a1,Một tiến trình có thể bao gồm những gì?,Một tiến trình có thể bao gồm nhiều luồng (tiểu trình).,,
+2025-10-30T05:44:28.093743,q0030,74040f5628748874779838fa7a292b09,"Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để làm gì?","Trong hệ thống đa tiến trình phân chia thời gian, bảng tiến trình (process table) dùng để lưu thông tin của các tiến trình [74040f5628748874779838fa7a292b09 tr.66].",,
+2025-10-30T05:44:46.952915,q0031,74040f5628748874779838fa7a292b09,Hệ điều hành sử dụng hai phương pháp nào để biết khi nào một thiết bị vào/ra hoàn thành yêu cầu?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:44:58.704172,q0032,a3aa8203ae0398a1ef263322bcadebc3,Bộ điều khiển thiết bị (Device Controller) là gì?,"Bộ điều khiển thiết bị (Device Controller - D.C) là một thiết bị mà các thiết bị ngoại vi (TBNV) được nối với hệ thống thông qua đó. Các mạch điện tử của bộ điều khiển thiết bị được cắm trên các khe cắm (slot) của mainboard máy tính [a3aa8203ae0398a1ef263322bcadebc3 tr.7]. Mỗi bộ điều khiển thiết bị có thể điều khiển 1, 2, 4,... thiết bị ngoại vi, tùy thuộc vào số giắc cắm có trên nó [a3aa8203ae0398a1ef263322bcadebc3 tr.9].",,
+2025-10-30T05:45:12.379135,q0033,a3aa8203ae0398a1ef263322bcadebc3,Ngắt (interrupt) là gì?,Ngắt (I/O interrupts) là khi thiết bị ngoại vi (tbnv) phát sinh ra một tín hiệu ngắt để báo cho CPU biết [a3aa8203ae0398a1ef263322bcadebc3 tr.14].,,
+2025-10-30T05:45:31.277523,q0034,74040f5628748874779838fa7a292b09,Mục đích chính của việc điều phối truy nhập đĩa là gì?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:45:50.535981,q0035,74040f5628748874779838fa7a292b09,"Khi hệ thống phát hiện lỗi vào ra, nó sẽ cố gắng khắc phục bằng cách nào đầu tiên?",Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:46:10.819098,q0036,a3aa8203ae0398a1ef263322bcadebc3,Nguyên tắc hoạt động của thuật toán C-SCAN là gì?,"Nguyên tắc hoạt động của thuật toán C-SCAN là xử lý các cylinders như một danh sách nối vòng. Đầu từ di chuyển từ cylinder ngoài cùng đến cylinder trong cùng, phục vụ các yêu cầu gặp trên đường đi. Khi tới cylinder trong cùng, nó quay ngược lại cylinder ngoài cùng mà không phục vụ các yêu cầu trên đường quay về.",,
+2025-10-30T05:46:24.815933,q0037,a3aa8203ae0398a1ef263322bcadebc3,Thuật toán LOOK khác với thuật toán SCAN như thế nào?,"Thuật toán LOOK là một phiên bản của SCAN/C-SCAN. Điểm khác biệt chính là đầu đọc của thuật toán LOOK không di chuyển tới các cylinder ngoài cùng hoặc trong cùng của đĩa. Thay vào đó, nó chỉ di chuyển đến các yêu cầu xa nhất về hai phía rồi quay lại ngay lập tức [a3aa8203ae0398a1ef263322bcadebc3 tr.44].",,
+2025-10-30T05:46:52.708628,q0038,a3aa8203ae0398a1ef263322bcadebc3,CPU làm việc với các thanh ghi của bộ điều khiển thiết bị thông qua đâu?,CPU làm việc với các thanh ghi của bộ điều khiển thiết bị thông qua các không gian địa chỉ đặc biệt: cổng vào ra.,,
+2025-10-30T05:47:07.037986,q0039,74040f5628748874779838fa7a292b09,Hệ thống sẽ làm gì khi phát hiện một lỗi vào/ra?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:47:20.459775,q0040,a3aa8203ae0398a1ef263322bcadebc3,"Theo quan điểm lập trình, một thiết bị vào/ra được xem như là gì?","Theo quan điểm lập trình, một thiết bị vào/ra được xem như là giao diện phần mềm để nhận lệnh, thực hiện và trả kết quả về [a3aa8203ae0398a1ef263322bcadebc3 tr.5].",,
+2025-10-30T05:47:34.655003,q0041,ea73ad6304ed438f7e7d4c59ddd227a1,Bốn điều kiện cần thiết để xảy ra bế tắc (deadlock) là gì?,"Bốn điều kiện cần thiết để xảy ra bế tắc (deadlock) là:
+*   Tài nguyên găng
+*   Chờ đợi trước khi vào đoạn găng
+*   Trưng dụng tài nguyên găng
+*   Chờ đợi vòng tròn
+[ea73ad6304ed438f7e7d4c59ddd227a1 tr.199]",,
+2025-10-30T05:47:49.173652,q0042,ea73ad6304ed438f7e7d4c59ddd227a1,Nhược điểm chính của mô hình luồng ở mức người dùng (User-Level Threads) là gì?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:48:06.493551,q0043,ea73ad6304ed438f7e7d4c59ddd227a1,Kể tên ba phương pháp chính để xử lý bế tắc.,"Ba phương pháp chính để xử lý bế tắc là:
+*   Phòng ngừa bế tắc
+*   Phòng tránh bế tắc
+*   Nhận biết và khắc phục",,
+2025-10-30T05:48:19.605519,q0044,1e8e6c622bfb571b0b783d8347182318,Thuật toán Người quản lý nhà băng (Banker's Algorithm) hoạt động dựa trên nguyên tắc nào để phòng tránh bế tắc?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:48:36.825717,q0045,ea73ad6304ed438f7e7d4c59ddd227a1,Điều phối CPU không trưng dụng (non-preemptive) xảy ra trong những trường hợp nào?,"Điều phối CPU không trưng dụng (non-preemptive) xảy ra trong các trường hợp sau:
+1.  Tiến trình chuyển từ trạng thái thực hiện sang trạng thái chờ đợi (yêu cầu",,
+2025-10-30T05:48:55.499979,q0046,74040f5628748874779838fa7a292b09,"Trong đồ thị cung cấp tài nguyên, điều gì cho thấy hệ thống đã rơi vào trạng thái bế tắc?",Nếu đồ thị cung cấp tài nguyên chứa chu trình và tài nguyên chỉ có 1 đơn vị.,,
+2025-10-30T05:49:09.567036,q0047,ea73ad6304ed438f7e7d4c59ddd227a1,Kỹ thuật SPOOLing giúp phòng ngừa bế tắc cho các tài nguyên như máy in bằng cách nào?,"Kỹ thuật SPOOLing giúp phòng ngừa bế tắc cho tài nguyên máy in bằng cách chỉ cho phép một tiến trình cụ thể (printer daemon) làm việc với máy in, từ đó hủy bỏ bế tắc cho tài nguyên này [ea73ad6304ed438f7e7d4c59ddd227a1 tr.212].",,
+2025-10-30T05:49:24.373739,q0048,ea73ad6304ed438f7e7d4c59ddd227a1,Tại sao các phép xử lý P(S) và V(S) trên đèn báo (semaphore) phải là các phép toán không phân chia được (atomic)?,Các phép xử lý P(S),,
+2025-10-30T05:49:49.214633,q0049,74040f5628748874779838fa7a292b09,"Khi sử dụng thuật toán dựa vào đồ thị cung cấp tài nguyên để phòng tránh bế tắc, cung đòi hỏi (claim edge) thể hiện điều gì?",Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-10-30T05:50:03.019891,q0050,ea73ad6304ed438f7e7d4c59ddd227a1,"Trong phương pháp khóa trong (lock-in), một tiến trình làm gì để vào đoạn găng?","Trong phương pháp khóa trong, một tiến trình muốn vào",,
+2025-10-30T13:43:48.877404,q0050,ea73ad6304ed438f7e7d4c59ddd227a1,"Trong phương pháp khóa trong (lock-in), một tiến trình làm gì để vào đoạn găng?","Trong phương pháp khóa trong, để vào đoạn găng, một tiến trình kiểm tra khóa của tiến trình còn lại. Nếu khóa đang mở, tiến trình được quyền vào đoạn găng và đóng khóa của mình (đặt byte khóa thành true). Nếu khóa đang đóng, tiến trình phải đợi.",,
+2025-10-30T13:44:11.696552,q0050,ea73ad6304ed438f7e7d4c59ddd227a1,"Trong phương pháp khóa trong (lock-in), một tiến trình làm gì để vào đoạn găng?","Trong phương pháp khóa trong, một tiến trình muốn vào đoạn găng sẽ kiểm tra khóa của tiến trình còn lại. Nếu khóa đang mở, tiến trình được quyền vào đoạn găng.",,
+2025-11-05T00:49:08.599359,q0002,a3aa8203ae0398a1ef263322bcadebc3,Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-11-05T00:51:10.731860,q0001,1e8e6c622bfb571b0b783d8347182318,"Trong chiến lược phân trang, PTBR (Page-table base register) có chức năng gì?","Trong chiến lược phân trang, PTBR (Page-table base register) trỏ tới PCB (Page Control Block) [1e8e6c622bfb571b0b783d8347182318 tr.105].",,
+2025-11-05T00:53:04.668588,q0002,a3aa8203ae0398a1ef263322bcadebc3,Điều gì xảy ra khi giá trị của bit Mp (Memory present) bằng 0 trong quá trình truy nhập bộ nhớ?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-11-05T00:53:53.667690,q0003,1e8e6c622bfb571b0b783d8347182318,Bộ nhớ được phân cấp dựa trên tiêu chí nào?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-11-05T01:00:38.603149,q0003,1e8e6c622bfb571b0b783d8347182318,Bộ nhớ được phân cấp dựa trên tiêu chí nào?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-11-05T01:02:33.849207,q0004,1e8e6c622bfb571b0b783d8347182318,Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?,Tôi không tìm thấy thông tin trong tài liệu.,,
+2025-11-05T15:02:13.369955,q0004,1e8e6c622bfb571b0b783d8347182318,Cấu trúc nạp động (dynamic loading) hoạt động như thế nào?,"Trong cấu trúc nạp động, mỗi modul được biên tập riêng. Người sử dụng có trách nhiệm nạp và xóa các modul.",,

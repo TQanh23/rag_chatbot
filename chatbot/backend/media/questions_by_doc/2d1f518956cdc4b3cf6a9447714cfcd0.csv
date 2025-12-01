@@ -1,0 +1,11 @@
+question_text
+Lời gọi hệ thống `Read()` yêu cầu những gì để thực hiện thao tác đọc file?
+Con trỏ đọc (read pointer) có vai trò gì?
+Làm thế nào để thu gọn một file mà vẫn giữ nguyên các thuộc tính của nó?
+Sector trên đĩa mềm được xác định như thế nào?
+Cấu trúc vật lý của một đĩa cứng bao gồm những thành phần chính nào?
+Hệ thống sử dụng loại con trỏ nào cho cả thao tác đọc và ghi?
+"Trong việc định vị thông tin trên đĩa mềm, tọa độ 3 chiều được chuyển đổi sang tọa độ 1 chiều như thế nào?"
+Thao tác thay đổi vị trí trong file (seek) có yêu cầu hoạt động vào/ra không?
+Con trỏ ghi (write pointer) được sử dụng để làm gì?
+"Sau khi nhận lời gọi `Read()`, hệ thống làm gì để tìm thấy dữ liệu của file?"

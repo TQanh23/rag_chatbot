@@ -1,0 +1,5 @@
+question_id,question_text,generated_answer,citations
+q0011,Lời gọi hệ thống `Read()` yêu cầu những gì để thực hiện thao tác đọc file?,"Lời gọi hệ thống `Read()` yêu cầu tên file và vùng đệm ghi kết quả (KQ) [2d1f518956cdc4b3cf6a9447714cfcd0 tr.14, tr",
+q0012,Con trỏ đọc (read pointer) có vai trò gì?,Con trỏ đọc (read pointer) chỉ ra vị trí được đọc và thay đổi sau mỗi thao tác đọc dữ liệu.,
+q0014,Sector trên đĩa mềm được xác định như thế nào?,"Sector trên đĩa mềm được xác định theo hai cách:
+*   Qua tọa độ 3 chiều: Header, Track, Sector [2d1f518956cdc4b3cf6a94",
