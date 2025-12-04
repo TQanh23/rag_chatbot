@@ -1,10 +1,148 @@
+"""
+Document chunking with semantic boundary detection and hierarchy support.
+
+Features:
+- Semantic boundary detection (chapters, sections, paragraphs)
+- Document structure/hierarchy propagation to chunks
+- Vietnamese language support with structural markers
+- Smart overlap for context preservation
+"""
+
 import nltk
 import re
 import os
 import logging
+from typing import List, Dict, Optional, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# HIERARCHY DATA STRUCTURES
+# ============================================================================
+
+def build_page_hierarchy_map(
+    sections: List[Dict[str, Any]],
+    total_pages: int
+) -> Dict[int, Dict[str, Any]]:
+    """
+    Build a mapping from page numbers to hierarchy information.
+    
+    Args:
+        sections: List of section dicts from extract_*_hierarchy() functions.
+                 Each section has: title, level, page (0-indexed), page_end (optional)
+        total_pages: Total number of pages in document
+        
+    Returns:
+        Dict mapping page number (0-indexed) to hierarchy info:
+        {
+            page: {
+                "section_title": "Current section title",
+                "section_path": ["Part 1", "Chapter 1", "Section 1.1"],
+                "hierarchy_level": 2,
+                "parent_section": "Chapter 1",
+                "document_structure_type": "hierarchical" | "flat"
+            }
+        }
+    """
+    if not sections:
+        # No structure detected - return flat structure
+        return {
+            page: {
+                "section_title": None,
+                "section_path": [],
+                "hierarchy_level": 0,
+                "parent_section": None,
+                "document_structure_type": "flat"
+            }
+            for page in range(total_pages)
+        }
+    
+    # Sort sections by page number
+    sorted_sections = sorted(sections, key=lambda x: (x.get("page", 0), x.get("level", 0)))
+    
+    # Build hierarchy stack for each page
+    page_hierarchy: Dict[int, Dict[str, Any]] = {}
+    
+    # Track current hierarchy state (stack of sections at each level)
+    hierarchy_stack: List[Dict[str, Any]] = []
+    current_section_idx = 0
+    
+    for page in range(total_pages):
+        # Update hierarchy stack with any sections that start on this page
+        while current_section_idx < len(sorted_sections):
+            section = sorted_sections[current_section_idx]
+            section_page = section.get("page", 0)
+            
+            if section_page > page:
+                break  # No more sections on this page
+            
+            if section_page == page:
+                level = section.get("level", 1)
+                
+                # Pop sections from stack that are at same or lower level
+                while hierarchy_stack and hierarchy_stack[-1].get("level", 0) >= level:
+                    hierarchy_stack.pop()
+                
+                # Push this section
+                hierarchy_stack.append(section)
+            
+            current_section_idx += 1
+        
+        # Build path from stack
+        if hierarchy_stack:
+            section_path = [s.get("title", "") for s in hierarchy_stack]
+            current_section = hierarchy_stack[-1]
+            parent_section = hierarchy_stack[-2].get("title") if len(hierarchy_stack) > 1 else None
+            
+            page_hierarchy[page] = {
+                "section_title": current_section.get("title"),
+                "section_path": section_path,
+                "hierarchy_level": current_section.get("level", 1),
+                "parent_section": parent_section,
+                "document_structure_type": "hierarchical"
+            }
+        else:
+            page_hierarchy[page] = {
+                "section_title": None,
+                "section_path": [],
+                "hierarchy_level": 0,
+                "parent_section": None,
+                "document_structure_type": "hierarchical" if sections else "flat"
+            }
+    
+    return page_hierarchy
+
+
+def get_hierarchy_for_page(
+    page: int,
+    structure_map: Optional[Dict[int, Dict[str, Any]]] = None
+) -> Dict[str, Any]:
+    """
+    Get hierarchy information for a specific page.
+    
+    Args:
+        page: Page number (0-indexed)
+        structure_map: Pre-computed page-to-hierarchy mapping
+        
+    Returns:
+        Hierarchy info dict
+    """
+    if structure_map is None or page not in structure_map:
+        return {
+            "section_title": None,
+            "section_path": [],
+            "hierarchy_level": 0,
+            "parent_section": None,
+            "document_structure_type": "flat"
+        }
+    
+    return structure_map[page]
+
+
+# ============================================================================
+# SEMANTIC BOUNDARY DETECTION
+# ============================================================================
 
 def detect_semantic_boundaries(text):
     """
@@ -79,19 +217,54 @@ def find_best_split_point(text, target_pos, window=200, boundaries=None):
     return best_pos
 
 
-def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512, overlap_tokens=100):
+# ============================================================================
+# CHUNKING FUNCTIONS
+# ============================================================================
+
+def semantic_chunk_text(
+    raw_blocks,
+    tokenizer,
+    target_tokens=400,
+    max_tokens=512,
+    overlap_tokens=100,
+    structure_map: Optional[Dict[int, Dict[str, Any]]] = None,
+    document_title: Optional[str] = None
+):
     """
     Enhanced semantic chunking that respects document structure.
     - Detects section boundaries (chapters, paragraphs, lists)
     - Prefers splitting at semantic boundaries over arbitrary token limits
     - Preserves context with smart overlap
+    - Propagates document hierarchy to chunks
     - Better for Vietnamese and multilingual documents
+    
+    Args:
+        raw_blocks: List of raw text blocks with page info
+        tokenizer: HuggingFace tokenizer for token counting
+        target_tokens: Target tokens per chunk (soft limit)
+        max_tokens: Maximum tokens per chunk (hard limit)
+        overlap_tokens: Token overlap between consecutive chunks
+        structure_map: Optional page-to-hierarchy mapping from build_page_hierarchy_map()
+        document_title: Optional document title to include in chunk metadata
+        
+    Returns:
+        List of chunk dictionaries with hierarchy metadata
     """
     def token_len(s: str) -> int:
         return len(tokenizer.encode(s, add_special_tokens=False))
     
     def make_chunk_id(document_id: str, order_index: int) -> str:
         return f"{document_id}:{order_index}"
+    
+    def get_hierarchy_info(page: Optional[int]) -> Dict[str, Any]:
+        if page is None or structure_map is None:
+            return {
+                "section_title": None,
+                "section_path": [],
+                "hierarchy_level": 0,
+                "parent_section": None,
+            }
+        return get_hierarchy_for_page(page, structure_map)
     
     chunks = []
     current_doc = None
@@ -108,8 +281,24 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
         if not text:
             continue
         
+        page = block.get("page")
+        hierarchy = get_hierarchy_info(page)
+        
         # Detect semantic boundaries in the block
         boundaries = detect_semantic_boundaries(text)
+        
+        # Base chunk metadata
+        base_metadata = {
+            "document_id": doc_id,
+            "page": page,
+            "end_page": block.get("end_page"),
+            "section": block.get("section") or hierarchy.get("section_title"),
+            "section_title": hierarchy.get("section_title"),
+            "section_path": hierarchy.get("section_path", []),
+            "hierarchy_level": hierarchy.get("hierarchy_level", 0),
+            "parent_section": hierarchy.get("parent_section"),
+            "document_title": document_title,
+        }
         
         # If block is small enough, keep as single chunk
         block_tokens = token_len(text)
@@ -117,12 +306,9 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
             chunks.append({
                 "chunk_id": make_chunk_id(doc_id, order_index),
                 "text": text,
-                "document_id": doc_id,
-                "page": block.get("page"),
-                "end_page": block.get("end_page"),
-                "section": block.get("section"),
                 "order_index": order_index,
                 "text_len": block_tokens,
+                **base_metadata,
             })
             order_index += 1
             continue
@@ -161,12 +347,9 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
                     chunks.append({
                         "chunk_id": make_chunk_id(doc_id, order_index),
                         "text": chunk_text,
-                        "document_id": doc_id,
-                        "page": block.get("page"),
-                        "end_page": block.get("end_page"),
-                        "section": block.get("section"),
                         "order_index": order_index,
                         "text_len": token_len(chunk_text),
+                        **base_metadata,
                     })
                     order_index += 1
                     
@@ -193,12 +376,9 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
                     chunks.append({
                         "chunk_id": make_chunk_id(doc_id, order_index),
                         "text": chunk_text,
-                        "document_id": doc_id,
-                        "page": block.get("page"),
-                        "end_page": block.get("end_page"),
-                        "section": block.get("section"),
                         "order_index": order_index,
                         "text_len": token_len(chunk_text),
+                        **base_metadata,
                     })
                     order_index += 1
                     current_sentences = []
@@ -215,12 +395,9 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
                     chunks.append({
                         "chunk_id": make_chunk_id(doc_id, order_index),
                         "text": part_text,
-                        "document_id": doc_id,
-                        "page": block.get("page"),
-                        "end_page": block.get("end_page"),
-                        "section": block.get("section"),
                         "order_index": order_index,
                         "text_len": len(part_ids),
+                        **base_metadata,
                     })
                     order_index += 1
                     
@@ -240,19 +417,23 @@ def semantic_chunk_text(raw_blocks, tokenizer, target_tokens=400, max_tokens=512
             chunks.append({
                 "chunk_id": make_chunk_id(doc_id, order_index),
                 "text": chunk_text,
-                "document_id": doc_id,
-                "page": block.get("page"),
-                "end_page": block.get("end_page"),
-                "section": block.get("section"),
                 "order_index": order_index,
                 "text_len": token_len(chunk_text),
+                **base_metadata,
             })
             order_index += 1
     
     return chunks
 
 
-def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=50):
+def clean_and_chunk_text(
+    raw_blocks,
+    tokenizer,
+    max_tokens=512,
+    overlap_tokens=50,
+    structure_map: Optional[Dict[int, Dict[str, Any]]] = None,
+    document_title: Optional[str] = None
+):
     """
     Clean raw text blocks and create semantic chunks.
     
@@ -261,9 +442,11 @@ def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=5
         tokenizer: HuggingFace tokenizer for token counting
         max_tokens: Maximum tokens per chunk
         overlap_tokens: Token overlap between chunks
+        structure_map: Optional page-to-hierarchy mapping
+        document_title: Optional document title for metadata
     
     Returns:
-        List of chunk dictionaries
+        List of chunk dictionaries with hierarchy metadata
     """
     chunks = []
     chunk_idx = 0
@@ -273,7 +456,7 @@ def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=5
         
         # Skip empty or whitespace-only blocks
         if not text or not text.strip():
-            logger.debug(f"Skipping empty block")
+            logger.debug("Skipping empty block")
             continue
         
         # Clean the text
@@ -281,12 +464,15 @@ def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=5
         
         # Skip if text is empty after cleaning
         if not text or not text.strip():
-            logger.debug(f"Skipping block after cleaning - empty")
+            logger.debug("Skipping block after cleaning - empty")
             continue
         
         document_id = block.get('document_id', '')
         page = block.get('page')
         section = block.get('section')
+        
+        # Get hierarchy info for this page
+        hierarchy = get_hierarchy_for_page(page, structure_map) if structure_map else {}
         
         # Tokenize to check length
         try:
@@ -295,16 +481,26 @@ def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=5
             logger.warning(f"Tokenization failed for block: {e}")
             continue
         
+        # Base metadata for chunks from this block
+        base_metadata = {
+            'document_id': document_id,
+            'page': page,
+            'section': section or hierarchy.get('section_title'),
+            'section_title': hierarchy.get('section_title'),
+            'section_path': hierarchy.get('section_path', []),
+            'hierarchy_level': hierarchy.get('hierarchy_level', 0),
+            'parent_section': hierarchy.get('parent_section'),
+            'document_title': document_title,
+        }
+        
         # If text fits in one chunk, add it directly
         if len(tokens) <= max_tokens:
             if text.strip():  # Final check
                 chunks.append({
-                    'chunk_id': f"{document_id}::chunk_{chunk_idx}",
-                    'document_id': document_id,
+                    'chunk_id': f"{document_id}:{chunk_idx}",
                     'text': text.strip(),
-                    'page': page,
-                    'section': section,
                     'order_index': chunk_idx,
+                    **base_metadata,
                 })
                 chunk_idx += 1
         else:
@@ -313,12 +509,10 @@ def clean_and_chunk_text(raw_blocks, tokenizer, max_tokens=512, overlap_tokens=5
             for sub_text in sub_chunks:
                 if sub_text and sub_text.strip():  # Only add non-empty chunks
                     chunks.append({
-                        'chunk_id': f"{document_id}::chunk_{chunk_idx}",
-                        'document_id': document_id,
+                        'chunk_id': f"{document_id}:{chunk_idx}",
                         'text': sub_text.strip(),
-                        'page': page,
-                        'section': section,
                         'order_index': chunk_idx,
+                        **base_metadata,
                     })
                     chunk_idx += 1
     

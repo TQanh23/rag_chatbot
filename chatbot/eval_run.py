@@ -19,10 +19,13 @@ import google.generativeai as genai
 import re
 import time
 
+from datetime import datetime
+import argparse
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-qa_gold_path = 'backend/qa_gold.csv'
+qa_gold_path = "backend/qa_gold_updated.csv"
 
 # Initialize clients
 mongo_repo = MongoRepository()
@@ -57,6 +60,129 @@ def load_gold_standard_mapping():
         logger.error(f"Failed to load gold standard: {e}")
         return None, {}, {}, {}, {}
 
+def _create_gold_mappings(gold_df):
+    """Helper to create mappings from a gold standard DataFrame."""
+    question_to_id = dict(zip(gold_df['question_text'], gold_df['question_id']))
+    doc_questions = {}
+    question_to_doc = {}
+    question_norm_map = {}
+    
+    for _, row in gold_df.iterrows():
+        doc_id = row['document_id']
+        qtext = row['question_text']
+        qtext_norm = qtext.strip().lower()
+        question_to_doc[qtext] = doc_id
+        question_norm_map[qtext_norm] = qtext
+        
+        if doc_id not in doc_questions:
+            doc_questions[doc_id] = []
+        doc_questions[doc_id].append(qtext)
+    
+    return question_to_id, doc_questions, question_to_doc, question_norm_map
+
+
+def load_gold_standard_from_mongo():
+    """
+    Load gold standard Q&A data from MongoDB 'qa_gold' collection.
+    Raises error if collection is empty (no CSV fallback).
+    
+    Returns:
+        Tuple of (gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc)
+    """
+    try:
+        # Load from MongoDB only
+        qa_gold_collection = mongo_repo.db['qa_gold']
+        qa_gold_docs = list(qa_gold_collection.find({}))
+        
+        if not qa_gold_docs:
+            logger.error("MongoDB qa_gold collection is empty. Run --sync-gold first to populate from CSV.")
+            return None, {}, {}, {}, {}
+        
+        # Convert MongoDB documents to DataFrame
+        records = []
+        for doc in qa_gold_docs:
+            record = {
+                'question_id': doc.get('_id') or doc.get('question_id'),
+                'document_id': doc.get('document_id'),
+                'question_text': doc.get('question_text'),
+                'gold_answer': doc.get('gold_answer'),
+                'gold_support_chunk_ids': doc.get('gold_support_chunk_ids', ''),
+                'page_hint': doc.get('page_hint', '')
+            }
+            records.append(record)
+        
+        gold_df = pd.DataFrame(records)
+        
+        # Create mappings
+        question_to_id, doc_questions, question_to_doc, question_norm_map = _create_gold_mappings(gold_df)
+        
+        logger.info(f"Loaded {len(question_to_id)} gold standard Q&A pairs from MongoDB")
+        
+        return gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc
+        
+    except Exception as e:
+        logger.error(f"Failed to load from MongoDB: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, {}, {}, {}, {}
+
+
+def sync_gold_standard_to_mongo():
+    """
+    Sync gold standard Q&A data from CSV to MongoDB 'qa_gold' collection.
+    Uses question_id as document _id.
+    
+    Returns:
+        Number of documents synced
+    """
+    try:
+        # Read CSV
+        gold_df = pd.read_csv(qa_gold_path)
+        
+        if gold_df.empty:
+            logger.warning("CSV file is empty, nothing to sync")
+            return 0
+        
+        qa_gold_collection = mongo_repo.db['qa_gold']
+        
+        # Clear existing collection
+        delete_result = qa_gold_collection.delete_many({})
+        logger.info(f"Cleared {delete_result.deleted_count} existing documents from MongoDB")
+        
+        # Prepare documents for insertion
+        documents = []
+        for _, row in gold_df.iterrows():
+            doc = {
+                '_id': row['question_id'],
+                'question_id': row['question_id'],
+                'document_id': row['document_id'],
+                'question_text': row['question_text'],
+                'gold_answer': row['gold_answer'],
+                'gold_support_chunk_ids': row.get('gold_support_chunk_ids', ''),
+                'page_hint': row.get('page_hint', ''),
+                'synced_at': datetime.utcnow()
+            }
+            documents.append(doc)
+        
+        # Insert all documents
+        if documents:
+            result = qa_gold_collection.insert_many(documents)
+            logger.info(f"Synced {len(result.inserted_ids)} Q&A records to MongoDB")
+            return len(result.inserted_ids)
+        
+        return 0
+        
+    except FileNotFoundError:
+        logger.error(f"CSV file not found: {qa_gold_path}")
+        return 0
+    except Exception as e:
+        logger.error(f"Failed to sync gold standard to MongoDB: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+
+
 def get_chunk_metadata_map():
     """Build mapping from Qdrant point ID (UUID) to canonical chunk ID format."""
     try:
@@ -86,31 +212,45 @@ def get_chunk_metadata_map():
         logger.warning(f"Could not build chunk metadata map: {e}")
         return {}
 
-def convert_chunk_id_to_gold_format(chunk_id_str):
+def convert_chunk_id_format(chunk_id_str):
     """
-    Convert chunk ID from retrieval format to gold standard format.
-    Gold standard uses single colon: 'doc_id:chunk_num'
+    Convert chunk ID to standardized format (doc_id:N).
+    
+    Both gold standard and Qdrant now use the same format (doc_id:N).
+    This function maintains backwards compatibility for legacy ::chunk_ format.
+    
+    Examples:
+        '1e8e6c622bfb571b0b783d8347182318:105' -> '1e8e6c622bfb571b0b783d8347182318:105' (no change)
+        '1e8e6c622bfb571b0b783d8347182318::chunk_105' -> '1e8e6c622bfb571b0b783d8347182318:105' (legacy conversion)
     """
     if not chunk_id_str:
         return chunk_id_str
     
-    # Handle double colon format: 'doc_id::chunk_num' -> 'doc_id:chunk_num'
-    if '::' in chunk_id_str:
-        parts = chunk_id_str.rsplit('::', 1)
+    # Handle legacy double colon format: 'doc_id::chunk_N' -> 'doc_id:N'
+    if '::chunk_' in chunk_id_str:
+        parts = chunk_id_str.rsplit('::chunk_', 1)
         if len(parts) == 2:
             doc_id, chunk_num = parts
-            # Remove 'chunk_' prefix if present
-            chunk_num = chunk_num.replace('chunk_', '')
             return f"{doc_id}:{chunk_num}"
     
-    # Already in correct format or unknown format
+    # Already in correct format (doc_id:N)
     return chunk_id_str
+
+def convert_chunk_id_to_gold_format(chunk_id_str):
+    """Alias for convert_chunk_id_format to maintain consistency."""
+    return convert_chunk_id_format(chunk_id_str)
 
 def debug_chunk_format_mismatch(retrieval_df, gold_df):
     """Debug helper to show chunk ID format differences."""
     print("\n" + "=" * 80)
     print("DEBUGGING CHUNK ID FORMAT MISMATCH")
     print("=" * 80)
+    
+    # Handle None cases
+    if retrieval_df is None:
+        print("No retrieval logs to debug")
+        print("=" * 80)
+        return
     
     # Sample from retrieval logs
     if not retrieval_df.empty:
@@ -128,9 +268,9 @@ def debug_chunk_format_mismatch(retrieval_df, gold_df):
             print(f"    '{chunk_id}'")
     
     # Sample from gold standard
-    if not gold_df.empty and 'gold_support_chunk_ids' in gold_df.columns:
+    if gold_df is not None and not gold_df.empty and 'gold_support_chunk_ids' in gold_df.columns:
         # Find matching gold standard entry
-        if not retrieval_df.empty:
+        if retrieval_df is not None and not retrieval_df.empty:
             first_qid = retrieval_df.iloc[0]['question_id']
             gold_match = gold_df[gold_df['question_id'] == first_qid]
             
@@ -202,7 +342,7 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
         wrong_doc_chunks_filtered = 0
         
         for log in retrieval_logs:
-            doc_id = log.get("document_id", "")
+            doc_id = log.get("document_id") or ""  # Handle None values
             question_text = log.get("question", "").strip()
             
             # Skip template variables and empty questions
@@ -218,9 +358,11 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
                 continue
             
             # Check if document ID matches expected gold standard document
-            expected_doc_id = question_to_doc.get(gold_qtext)
+            expected_doc_id = question_to_doc.get(gold_qtext) or ""
             if expected_doc_id and doc_id != expected_doc_id:
-                logger.debug(f"Document mismatch for '{gold_qtext[:50]}...': got {doc_id[:8]}..., expected {expected_doc_id[:8]}...")
+                doc_id_display = doc_id[:8] if doc_id else "(empty)"
+                expected_display = expected_doc_id[:8] if expected_doc_id else "(empty)"
+                logger.debug(f"Document mismatch for '{gold_qtext[:50]}...': got {doc_id_display}..., expected {expected_display}...")
                 doc_mismatch_count += 1
                 # Don't skip - just filter chunks from wrong documents below
             
@@ -292,6 +434,109 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
         traceback.print_exc()
         return None, 0
 
+def get_citation_logs_from_mongo(question_to_id, question_norm_map, question_to_doc):
+    """Get ALL citation logs from MongoDB as DataFrame, matching against gold standard."""
+    try:
+        citation_logs = list(mongo_repo.db['citation_log'].find({}))
+        
+        if not citation_logs:
+            logger.warning("No citation logs found in MongoDB")
+            return None, 0
+        
+        rows = []
+        mapped_count = 0
+        skipped_count = 0
+        fuzzy_matches = 0
+        
+        # Group citations by question_id for aggregation
+        question_citations = {}
+        
+        for log in citation_logs:
+            question_text = log.get("question_text", "") or log.get("question", "")
+            
+            # Handle None or non-string question_text
+            if not question_text:
+                skipped_count += 1
+                continue
+            
+            question_text = str(question_text).strip()
+            
+            if not question_text or "{{" in question_text:
+                skipped_count += 1
+                continue
+            
+            # Try to find matching gold question (with fuzzy matching)
+            gold_qtext = find_best_match(question_text, question_norm_map, threshold=0.80)
+            
+            if not gold_qtext:
+                skipped_count += 1
+                continue
+            
+            if normalize_question(question_text) != normalize_question(gold_qtext):
+                fuzzy_matches += 1
+            
+            question_id = question_to_id[gold_qtext]
+            expected_doc_id = question_to_doc.get(gold_qtext, "")
+            
+            # Extract citation data
+            citation_data = {
+                "chunk_id": log.get("chunk_id", ""),
+                "document_id": log.get("document_id", ""),
+                "page": log.get("page", ""),
+                "citation_rank": log.get("citation_rank", 0),
+                "rerank_score": log.get("rerank_score", 0.0),
+                "used_in_generation": log.get("used_in_generation", False)
+            }
+            
+            if question_id not in question_citations:
+                question_citations[question_id] = {
+                    "question_id": question_id,
+                    "question_text": gold_qtext,
+                    "document_id": expected_doc_id,
+                    "citations": []
+                }
+            
+            question_citations[question_id]["citations"].append(citation_data)
+        
+        # Convert to rows
+        for qid, data in question_citations.items():
+            citations = data["citations"]
+            # Sort by citation_rank (handle None values by treating them as 0)
+            citations.sort(key=lambda x: x.get("citation_rank") or 0)
+            
+            chunk_ids = [c["chunk_id"] for c in citations]
+            scores = [c["rerank_score"] for c in citations]
+            used_flags = [c["used_in_generation"] for c in citations]
+            
+            rows.append({
+                "question_id": qid,
+                "question_text": data["question_text"],
+                "document_id": data["document_id"],
+                "cited_chunk_ids": "|".join(chunk_ids),
+                "citation_scores": "|".join([str(s) for s in scores]),
+                "used_in_generation": "|".join([str(u) for u in used_flags]),
+                "num_citations": len(citations)
+            })
+            mapped_count += 1
+        
+        logger.info(f"Loaded {mapped_count} citation log groups from MongoDB")
+        logger.info(f"  Total citation entries processed: {len(citation_logs)}")
+        logger.info(f"  Fuzzy matches: {fuzzy_matches}")
+        logger.info(f"  Skipped: {skipped_count} (template/unmapped questions)")
+        
+        if mapped_count == 0:
+            logger.warning("No matching citation logs found")
+            return None, 0
+        
+        df = pd.DataFrame(rows)
+        return df, mapped_count
+    except Exception as e:
+        logger.error(f"Failed to load citation logs: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, 0
+
+
 def get_generation_logs_from_mongo(question_to_id, gold_df, question_norm_map):
     """Get ALL generation logs from MongoDB as DataFrame, matching against gold standard."""
     try:
@@ -312,7 +557,14 @@ def get_generation_logs_from_mongo(question_to_id, gold_df, question_norm_map):
         fuzzy_matches = 0
         
         for log in generation_logs:
-            question_text = log.get("question_text", "").strip()
+            question_text = log.get("question_text", "")
+            
+            # Handle None or non-string question_text
+            if not question_text:
+                skipped_count += 1
+                continue
+            
+            question_text = str(question_text).strip()
             
             if not question_text or "{{" in question_text:
                 skipped_count += 1
@@ -333,8 +585,12 @@ def get_generation_logs_from_mongo(question_to_id, gold_df, question_norm_map):
             question_id = question_to_id[gold_qtext]
             mapped_count += 1
             
-            # FIX: Changed from 'final_answer_text' to 'generated_answer'
-            answer_text = log.get("generated_answer", "").strip()
+            # Handle None or non-string generated_answer
+            answer_text = log.get("generated_answer")
+            if answer_text is None:
+                answer_text = ""
+            else:
+                answer_text = str(answer_text).strip()
             
             if not answer_text:
                 answer_stats["empty"] += 1
@@ -478,11 +734,34 @@ print("RAG CHATBOT EVALUATION - ALL DATABASE LOGS")
 print("=" * 80)
 print()
 
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='Evaluate RAG chatbot performance')
+parser.add_argument('--sync-gold', action='store_true', 
+                    help='Sync gold standard from CSV to MongoDB before loading')
+parser.add_argument('--source', choices=['mongo', 'csv'], default='mongo',
+                    help='Load gold standard from MongoDB (default) or CSV')
+args = parser.parse_args()
+
+# Sync gold standard to MongoDB if requested
+if args.sync_gold:
+    print("=" * 80)
+    print("Syncing gold standard from CSV to MongoDB...")
+    print("=" * 80)
+    synced_count = sync_gold_standard_to_mongo()
+    print(f"Synced {synced_count} records")
+    print()
+
 # Load gold standard
 print("=" * 80)
-print("Loading gold standard Q&A pairs...")
+print(f"Loading gold standard Q&A pairs (source: {args.source})...")
 print("=" * 80)
-gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc = load_gold_standard_mapping()
+
+# Always load from MongoDB - CSV option removed for consistency
+if args.source == 'csv':
+    logger.warning("CSV source option is deprecated. Use --sync-gold to sync CSV to MongoDB first.")
+    logger.info("Loading from MongoDB instead...")
+
+gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc = load_gold_standard_from_mongo()
 
 if gold_df is None:
     logger.error("Cannot proceed without gold standard data")
@@ -557,14 +836,158 @@ def evaluate_retrieval_from_dataframe(gold_df, run_df):
         'per_question': merged_df.to_dict('records')
     }
 
+def normalize_citations_in_answer(answer_text):
+    """
+    Normalize citation formats in answer text for fair comparison.
+    
+    Converts [cite: N] format to [doc_id: chunk_id] format.
+    This allows fair comparison between gold answers (which use cite numbers)
+    and generated answers (which use doc_id references).
+    
+    Examples:
+        "[cite: 1]" -> "[doc_id: gold_1]"
+        "text [cite: 2] more text" -> "text [doc_id: gold_2] more text"
+    """
+    if not answer_text:
+        return answer_text
+    
+    import re
+    
+    def replace_cite(match):
+        cite_num = match.group(1)
+        return f"[doc_id tr.{cite_num}]"
+    
+    # Replace [cite: N] with [doc_id: gold_N]
+    normalized = re.sub(r'\[cite:\s*(\d+)\]', replace_cite, answer_text)
+    return normalized
+
+def evaluate_citations_from_dataframe(gold_df, citation_df, retrieval_df=None):
+    """Evaluate citation quality using DataFrames directly.
+    
+    Metrics:
+    - Precision: How many cited chunks are in gold standard support chunks
+    - Recall: How many gold standard support chunks were cited
+    - Hallucination rate: Citations to chunks not in retrieval results
+    """
+    import numpy as np
+    
+    # Create gold chunk mappings
+    gold_chunks_map = {}
+    for _, row in gold_df.iterrows():
+        qid = row['question_id']
+        gold_chunks = row.get('gold_support_chunk_ids', '')
+        if isinstance(gold_chunks, str) and gold_chunks:
+            gold_chunks_map[qid] = set(gold_chunks.split('|'))
+        else:
+            gold_chunks_map[qid] = set()
+    
+    # Create retrieval chunks mapping (if available)
+    retrieved_chunks_map = {}
+    if retrieval_df is not None:
+        for _, row in retrieval_df.iterrows():
+            qid = row['question_id']
+            retrieved = row.get('retrieved_chunk_ids', '')
+            if isinstance(retrieved, str) and retrieved:
+                retrieved_chunks_map[qid] = set(retrieved.split('|'))
+            else:
+                retrieved_chunks_map[qid] = set()
+    
+    metrics = {
+        'precision': [],
+        'recall': [],
+        'hallucination_rate': [],
+        'num_citations': []
+    }
+    
+    question_scores = []
+    
+    for _, row in citation_df.iterrows():
+        qid = row['question_id']
+        cited_chunks_str = row.get('cited_chunk_ids', '')
+        
+        if not cited_chunks_str:
+            continue
+        
+        cited_chunks = set(cited_chunks_str.split('|'))
+        gold_chunks = gold_chunks_map.get(qid, set())
+        retrieved_chunks = retrieved_chunks_map.get(qid, set())
+        
+        num_citations = len(cited_chunks)
+        
+        # Precision: cited chunks that are in gold / total cited
+        if num_citations > 0:
+            correct_citations = cited_chunks & gold_chunks
+            precision = len(correct_citations) / num_citations
+        else:
+            precision = 0.0
+        
+        # Recall: cited chunks that are in gold / total gold chunks
+        if len(gold_chunks) > 0:
+            correct_citations = cited_chunks & gold_chunks
+            recall = len(correct_citations) / len(gold_chunks)
+        else:
+            recall = 1.0 if num_citations == 0 else 0.0
+        
+        # Hallucination: citations to chunks not in retrieval results
+        if num_citations > 0 and len(retrieved_chunks) > 0:
+            hallucinated = cited_chunks - retrieved_chunks
+            hallucination_rate = len(hallucinated) / num_citations
+        else:
+            hallucination_rate = 0.0
+        
+        metrics['precision'].append(precision)
+        metrics['recall'].append(recall)
+        metrics['hallucination_rate'].append(hallucination_rate)
+        metrics['num_citations'].append(num_citations)
+        
+        question_scores.append({
+            'question_id': qid,
+            'precision': precision,
+            'recall': recall,
+            'hallucination_rate': hallucination_rate,
+            'num_citations': num_citations
+        })
+    
+    # Compute summary
+    summary = {}
+    for metric_name, values in metrics.items():
+        if not values:
+            continue
+        vals_arr = np.array(values, dtype=float)
+        summary[metric_name] = {
+            'mean': float(np.mean(vals_arr)),
+            'std': float(np.std(vals_arr)),
+            'min': float(np.min(vals_arr)),
+            'max': float(np.max(vals_arr)),
+            'count': int(len(vals_arr))
+        }
+    
+    # Add avg_citations as a top-level summary field
+    if metrics['num_citations']:
+        summary['avg_citations'] = float(np.mean(metrics['num_citations']))
+    else:
+        summary['avg_citations'] = 0.0
+    
+    return {
+        'summary': summary,
+        'per_question': question_scores
+    }
+
+
 def evaluate_generation_from_dataframe(gold_df, gen_df):
     """Evaluate generation using DataFrames directly."""
     from backend.utils.generate_metrics import GenerationEvaluator
     from rouge_score import rouge_scorer
     import numpy as np
     
-    # Create gold answer mapping
-    gold_map = dict(zip(gold_df['question_text'], gold_df['gold_answer']))
+    # Create gold answer mapping with normalized citations
+    gold_map = {}
+    for _, row in gold_df.iterrows():
+        qtext = str(row.get('question_text', '') or '').strip()
+        gold_ans = str(row.get('gold_answer', '') or '').strip()
+        # Normalize citations in gold answers
+        gold_ans_normalized = normalize_citations_in_answer(gold_ans)
+        gold_map[qtext] = gold_ans_normalized
     
     # Initialize metrics
     metrics = {
@@ -644,6 +1067,9 @@ retrieval_df, retrieval_count = get_retrieval_logs_from_mongo(
 gen_df, gen_count = get_generation_logs_from_mongo(
     question_to_id, gold_df, question_norm_map
 )
+citation_df, citation_count = get_citation_logs_from_mongo(
+    question_to_id, question_norm_map, question_to_doc
+)
 print()
 
 # DEBUG: Check chunk formats
@@ -653,8 +1079,10 @@ sys.stdout.flush()
 results = {
     "total_retrieval_logs": retrieval_count,
     "total_generation_logs": gen_count,
+    "total_citation_logs": citation_count,
     "retrieval_evaluation": None,
     "generation_evaluation": None,
+    "citation_evaluation": None,
     "gemini_rating": None
 }
 
@@ -682,6 +1110,7 @@ print()
 
 print(f"DEBUG: Retrieval DF: {len(retrieval_df) if retrieval_df is not None else 0} rows")
 print(f"DEBUG: Generation DF: {len(gen_df) if gen_df is not None else 0} rows")
+print(f"DEBUG: Citation DF: {len(citation_df) if citation_df is not None else 0} rows")
 sys.stdout.flush()
 
 # Run generation evaluation
@@ -722,10 +1151,32 @@ if gen_df is not None and not gen_df.empty:
 else:
     print("No generation logs to evaluate")
 
+# Run citation evaluation
+if citation_df is not None and not citation_df.empty:
+    print("=" * 80)
+    print("Running Citation Evaluation...")
+    print("=" * 80)
+    try:
+        citation_eval = evaluate_citations_from_dataframe(gold_df, citation_df, retrieval_df)
+        results['citation_evaluation'] = citation_eval
+        if citation_eval and citation_eval.get('summary'):
+            summary = citation_eval['summary']
+            print(f"Citation Precision: {summary.get('precision', {}).get('mean', 0):.3f}")
+            print(f"Citation Recall: {summary.get('recall', {}).get('mean', 0):.3f}")
+            print(f"Avg Citations per Question: {summary.get('avg_citations', 0):.2f}")
+        print("Citation evaluation complete")
+    except Exception as e:
+        logger.error(f"Citation evaluation failed: {e}")
+        import traceback
+        traceback.print_exc()
+else:
+    print("No citation logs to evaluate")
+
 print()
 print("=" * 80)
 print("EVALUATION SUMMARY")
 print("=" * 80)
 print(f"Total Retrieval Logs Evaluated: {retrieval_count}")
 print(f"Total Generation Logs Evaluated: {gen_count}")
+print(f"Total Citation Logs Evaluated: {citation_count}")
 print("=" * 80)

@@ -43,16 +43,30 @@ class MongoChunk:
     """
     Schema for chunks collection.
     Stores text chunks with embeddings for vector search.
+    
+    Hierarchy fields:
+    - section_title: Current section title (from document structure)
+    - section_path: Full path from root to current section
+    - hierarchy_level: Depth in document hierarchy (0=root, 1=chapter, etc.)
+    - parent_section: Title of parent section
+    - document_title: Document's main title
     """
     chunk_id: str
     document_id: str
     text: str
-    embedding: List[float]  # 384-dim vector for sentence-transformers
+    embedding: List[float]  # 768-dim vector for Vietnamese embedding
     page: Optional[int] = None
     end_page: Optional[int] = None
-    section: Optional[str] = None
+    section: Optional[str] = None  # Legacy field, prefer section_title
     order_index: int = 0
     text_len: int = 0
+    # Document hierarchy fields (new)
+    section_title: Optional[str] = None
+    section_path: Optional[List[str]] = None
+    hierarchy_level: int = 0
+    parent_section: Optional[str] = None
+    document_title: Optional[str] = None
+    # General metadata
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     
@@ -61,14 +75,47 @@ class MongoChunk:
             self.created_at = datetime.utcnow()
         if self.metadata is None:
             self.metadata = {}
+        if self.section_path is None:
+            self.section_path = []
         if not self.text_len:
             self.text_len = len(self.text)
+        # Extract hierarchy from metadata if provided there
+        if self.metadata:
+            if self.section_title is None:
+                self.section_title = self.metadata.get("section_title")
+            if not self.section_path:
+                self.section_path = self.metadata.get("section_path", [])
+            if self.hierarchy_level == 0:
+                self.hierarchy_level = self.metadata.get("hierarchy_level", 0)
+            if self.parent_section is None:
+                self.parent_section = self.metadata.get("parent_section")
+            if self.document_title is None:
+                self.document_title = self.metadata.get("document_title")
     
     def to_dict(self):
         """Convert to MongoDB document format with _id."""
         data = asdict(self)
         data["_id"] = self.chunk_id
         return data
+    
+    def get_full_context(self) -> str:
+        """
+        Get a context string including hierarchy information.
+        Useful for providing richer context to LLM.
+        """
+        context_parts = []
+        if self.document_title:
+            context_parts.append(f"Document: {self.document_title}")
+        if self.section_path:
+            context_parts.append(f"Section: {' > '.join(self.section_path)}")
+        elif self.section_title:
+            context_parts.append(f"Section: {self.section_title}")
+        if self.page is not None:
+            context_parts.append(f"Page: {self.page}")
+        
+        if context_parts:
+            return f"[{', '.join(context_parts)}]\n{self.text}"
+        return self.text
 
 
 @dataclass
@@ -192,7 +239,7 @@ def generate_document_id(content_hash: str) -> str:
 
 def generate_chunk_id(document_id: str, order_index: int) -> str:
     """Generate chunk ID from document ID and order."""
-    return f"{document_id}::chunk_{order_index}"
+    return f"{document_id}:{order_index}"
 
 
 def generate_question_id() -> str:

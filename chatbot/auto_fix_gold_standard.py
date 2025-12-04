@@ -74,11 +74,11 @@ def auto_fix_gold_standard(
     print("Initializing models...")
     qdrant_client = QdrantClient()
     embeddings_model = HuggingfaceEmbeddingsModel()
-    reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+    reranker = CrossEncoder('itdainb/PhoRanker')
     collection_name = os.getenv('QDRANT_COLLECTION', 'test_collection')
     
     # Load current gold standard
-    qa_gold = pd.read_csv('backend/qa_gold.csv')
+    qa_gold = pd.read_csv("qa_gold.csv")
     print(f"Loaded {len(qa_gold)} questions from qa_gold.csv")
     
     # Apply filters

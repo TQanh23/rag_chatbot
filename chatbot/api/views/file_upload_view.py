@@ -5,14 +5,22 @@ from rest_framework import status
 from backend.utils.compute_file_hash import compute_file_hash
 from documents.models import Document
 from django.core.files.storage import default_storage
-from backend.utils.qdrant_client import get_qdrant_client
-from qdrant_client.http.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
+from backend.utils.qdrant_client import (
+    get_qdrant_client, get_sparse_builder, generate_sparse_vector,
+    SparseVectorBuilder
+)
+from qdrant_client.http.models import (
+    PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue,
+    SparseVectorParams, SparseIndexParams, NamedSparseVector
+)
 from transformers import AutoTokenizer, AutoModel
 from backend.utils.embeddings import HuggingfaceEmbeddingsModel
 import os
 import uuid
+import re
 import nltk
 import fitz
+from typing import List, Dict, Any, Optional, Tuple
 from django.conf import settings
 import logging
 import json
@@ -24,12 +32,248 @@ from backend.utils.qdrant_client import QdrantClient
 # Chunking and evaluation
 from ..tools.chunk_eval import eval_chunks
 from ..tools.export_chunks import write_chunks_csv
+from ..tools.chunking import build_page_hierarchy_map
 
 # MongoDB imports
 from backend.utils.mongo_repository import MongoRepository
 from backend.utils.mongo_models import MongoDocument, MongoChunk
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# DOCUMENT HIERARCHY EXTRACTION
+# ============================================================================
+
+def extract_pdf_hierarchy(pdf_path: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Extract document structure (chapters, sections) from PDF using TOC.
+    
+    Args:
+        pdf_path: Path to PDF file
+        
+    Returns:
+        Tuple of:
+        - List of section dicts: [{title, level, page}, ...]
+        - Document title (from TOC or first heading)
+    """
+    sections = []
+    document_title = None
+    
+    try:
+        with fitz.open(pdf_path) as doc:
+            # Try to get TOC (table of contents)
+            toc = doc.get_toc()  # Returns [[level, title, page], ...]
+            
+            if toc:
+                for item in toc:
+                    level = item[0]  # Heading level (1, 2, 3...)
+                    title = item[1]  # Heading title
+                    page = item[2] - 1  # Convert to 0-indexed
+                    
+                    sections.append({
+                        "title": title.strip(),
+                        "level": level,
+                        "page": max(0, page),  # Ensure non-negative
+                    })
+                    
+                    # First level-1 heading is likely the document title
+                    if level == 1 and document_title is None:
+                        document_title = title.strip()
+                
+                logger.info(f"Extracted {len(sections)} sections from PDF TOC")
+            else:
+                # No TOC - try to detect structure from text
+                sections = _detect_structure_from_pdf_text(doc)
+                
+                if sections:
+                    # Get document title from first major heading
+                    for s in sections:
+                        if s.get("level", 99) <= 1:
+                            document_title = s.get("title")
+                            break
+                    logger.info(f"Detected {len(sections)} sections from PDF text (no TOC)")
+                else:
+                    logger.info("No document structure detected in PDF")
+                    
+    except Exception as e:
+        logger.warning(f"Error extracting PDF hierarchy: {e}")
+    
+    return sections, document_title
+
+
+def _detect_structure_from_pdf_text(doc) -> List[Dict[str, Any]]:
+    """
+    Detect document structure from PDF text when no TOC is available.
+    Uses regex patterns to identify chapter/section headings.
+    """
+    sections = []
+    
+    # Patterns for Vietnamese and English headings
+    patterns = [
+        # Vietnamese chapter patterns
+        (r'^(?:Chương|CHƯƠNG)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Phần|PHẦN)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        # Vietnamese section patterns
+        (r'^(?:Mục|MỤC)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
+        (r'^(\d+\.\d+(?:\.\d+)*)\s+(.+)$', 2),  # Numbered sections like "1.1 Title"
+        # English patterns
+        (r'^(?:Chapter|CHAPTER)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Part|PART)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Section|SECTION)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
+        # All-caps headings (likely section titles)
+        (r'^([A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰ\s]{15,})$', 1),
+    ]
+    
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
+        lines = text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 3:
+                continue
+            
+            for pattern, level in patterns:
+                match = re.match(pattern, line, re.MULTILINE)
+                if match:
+                    # Get the title (last group or full match for all-caps)
+                    title = match.group(2) if match.lastindex >= 2 else line
+                    title = title.strip()
+                    
+                    if title and len(title) > 2:
+                        sections.append({
+                            "title": title,
+                            "level": level,
+                            "page": page_num,
+                        })
+                    break
+    
+    # Deduplicate sections on same page with same level
+    seen = set()
+    unique_sections = []
+    for s in sections:
+        key = (s["page"], s["level"], s["title"][:30])
+        if key not in seen:
+            seen.add(key)
+            unique_sections.append(s)
+    
+    return unique_sections
+
+
+def extract_docx_hierarchy(docx_path: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Extract document structure from DOCX using paragraph styles.
+    
+    Args:
+        docx_path: Path to DOCX file
+        
+    Returns:
+        Tuple of:
+        - List of section dicts: [{title, level, paragraph_index}, ...]
+        - Document title (from Title style or first heading)
+    """
+    from docx import Document as DocxDocument
+    from docx.enum.style import WD_STYLE_TYPE
+    
+    sections = []
+    document_title = None
+    
+    try:
+        doc = DocxDocument(docx_path)
+        
+        # Map style names to hierarchy levels
+        style_levels = {
+            "Title": 0,
+            "Heading 1": 1,
+            "Heading 2": 2,
+            "Heading 3": 3,
+            "Heading 4": 4,
+            "Heading 5": 5,
+            "Heading 6": 6,
+            # Vietnamese style names
+            "Tiêu đề": 0,
+            "Tiêu đề 1": 1,
+            "Tiêu đề 2": 2,
+            "Tiêu đề 3": 3,
+        }
+        
+        for idx, para in enumerate(doc.paragraphs):
+            text = para.text.strip()
+            if not text:
+                continue
+            
+            style_name = para.style.name if para.style else ""
+            
+            if style_name in style_levels:
+                level = style_levels[style_name]
+                
+                sections.append({
+                    "title": text,
+                    "level": level if level > 0 else 1,  # Treat Title as level 1 for hierarchy
+                    "page": idx // 30,  # Approximate page (30 paragraphs per page)
+                })
+                
+                # Get document title from Title style or first Heading 1
+                if level == 0 and document_title is None:
+                    document_title = text
+                elif level == 1 and document_title is None:
+                    document_title = text
+        
+        if sections:
+            logger.info(f"Extracted {len(sections)} sections from DOCX styles")
+        else:
+            # Fallback: detect structure from text patterns
+            sections = _detect_structure_from_docx_text(doc)
+            logger.info(f"Detected {len(sections)} sections from DOCX text (no styles)")
+            
+    except Exception as e:
+        logger.warning(f"Error extracting DOCX hierarchy: {e}")
+    
+    return sections, document_title
+
+
+def _detect_structure_from_docx_text(doc) -> List[Dict[str, Any]]:
+    """
+    Detect document structure from DOCX text when styles aren't used.
+    """
+    sections = []
+    
+    # Same patterns as PDF
+    patterns = [
+        (r'^(?:Chương|CHƯƠNG)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Phần|PHẦN)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Mục|MỤC)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
+        (r'^(\d+\.\d+(?:\.\d+)*)\s+(.+)$', 2),
+        (r'^(?:Chapter|CHAPTER)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
+        (r'^(?:Section|SECTION)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
+    ]
+    
+    for idx, para in enumerate(doc.paragraphs):
+        text = para.text.strip()
+        if not text or len(text) < 3:
+            continue
+        
+        for pattern, level in patterns:
+            match = re.match(pattern, text, re.MULTILINE)
+            if match:
+                title = match.group(2) if match.lastindex >= 2 else text
+                title = title.strip()
+                
+                if title and len(title) > 2:
+                    sections.append({
+                        "title": title,
+                        "level": level,
+                        "page": idx // 30,
+                    })
+                break
+    
+    return sections
+
+
+# ============================================================================
+# UPLOAD VIEW FUNCTIONS
+# ============================================================================
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -235,21 +479,32 @@ class FileUploadView(APIView):
                 if 'text' in block and block['text']:
                     block['text'] = preprocess_document_text(block['text'])
             
+            # Get structure map and document title from extraction
+            structure_map = getattr(self, '_last_structure_map', None)
+            document_title = getattr(self, '_last_document_title', None)
+            
             # Use semantic chunking if enabled, otherwise use standard chunking
             use_semantic = os.getenv("USE_SEMANTIC_CHUNKING", "true").lower() == "true"
             
             if use_semantic:
-                logger.info("Using semantic chunking with sentence boundaries")
+                logger.info("Using semantic chunking with sentence boundaries and hierarchy")
                 chunks = semantic_chunk_text(
                     raw_blocks, 
                     self.tokenizer,
                     target_tokens=int(os.getenv("CHUNK_TARGET_TOKENS", "400")),
                     max_tokens=int(os.getenv("CHUNK_MAX_TOKENS", "512")),
-                    overlap_tokens=int(os.getenv("CHUNK_OVERLAP_TOKENS", "50"))
+                    overlap_tokens=int(os.getenv("CHUNK_OVERLAP_TOKENS", "50")),
+                    structure_map=structure_map,
+                    document_title=document_title
                 )
             else:
-                logger.info("Using standard chunking")
-                chunks = clean_and_chunk_text(raw_blocks, self.tokenizer)
+                logger.info("Using standard chunking with hierarchy")
+                chunks = clean_and_chunk_text(
+                    raw_blocks, 
+                    self.tokenizer,
+                    structure_map=structure_map,
+                    document_title=document_title
+                )
             
             logger.debug(f"Chunks generated: {chunks}")
             logger.debug(f"Number of chunks: {len(chunks)}")
@@ -320,43 +575,139 @@ class FileUploadView(APIView):
             client = get_qdrant_client()
             collection_name = settings.QDRANT_COLLECTION
             
-            # Now create/ensure collection exists with correct vector dimensions
+            # Check if collection exists and determine if it's hybrid
+            is_hybrid = False
             try:
-                client.get_collection(collection_name)
+                collection_info = client.get_collection(collection_name)
+                # Check if sparse vectors are configured
+                is_hybrid = (
+                    hasattr(collection_info.config, 'sparse_vectors_config') and 
+                    collection_info.config.sparse_vectors_config is not None
+                )
+                # Check vector config type
+                vectors_config = collection_info.config.params.vectors
+                if isinstance(vectors_config, dict):
+                    has_dense_named = "dense" in vectors_config
+                else:
+                    has_dense_named = False
+                    
+                logger.info(f"Collection {collection_name} exists (hybrid={is_hybrid}, dense_named={has_dense_named})")
             except Exception:
-                # Try to create the collection; if it already exists (409) ignore the error.
+                # Collection doesn't exist - create it
                 try:
-                    # Default to 768 for dangvantuan/vietnamese-embedding
+                    # Check if hybrid search is enabled
+                    enable_hybrid = os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true"
                     vector_size = embeddings[0].shape[0] if len(embeddings) > 0 else int(os.getenv("EMBEDDING_DIM", "768"))
-                    client.create_collection(
-                        collection_name=collection_name,
-                        vectors_config={
-                            "default": VectorParams(
-                                size=vector_size,
-                                distance=Distance.COSINE
-                            )
-                        }
-                    )
-                    logger.info(f"Created collection {collection_name} with vector size: {vector_size}")
+                    
+                    if enable_hybrid:
+                        # Create hybrid collection with dense + sparse vectors
+                        client.create_collection(
+                            collection_name=collection_name,
+                            vectors_config={
+                                "dense": VectorParams(
+                                    size=vector_size,
+                                    distance=Distance.COSINE
+                                )
+                            },
+                            sparse_vectors_config={
+                                "sparse": SparseVectorParams(
+                                    index=SparseIndexParams(on_disk=False)
+                                )
+                            }
+                        )
+                        is_hybrid = True
+                        has_dense_named = True
+                        logger.info(f"Created HYBRID collection {collection_name} with dense ({vector_size}-dim) + sparse vectors")
+                    else:
+                        # Create legacy collection with named "default" vector
+                        client.create_collection(
+                            collection_name=collection_name,
+                            vectors_config={
+                                "default": VectorParams(
+                                    size=vector_size,
+                                    distance=Distance.COSINE
+                                )
+                            }
+                        )
+                        has_dense_named = False
+                        logger.info(f"Created collection {collection_name} with vector size: {vector_size}")
                 except Exception as e:
                     msg = str(e).lower()
-                    if "already exists" in msg or "409" in msg or "collection" in msg and "already exists" in msg:
-                        logger.info(f"Collection {collection_name} already exists (ignored): {e}")
+                    if "already exists" in msg or "409" in msg:
+                        logger.info(f"Collection {collection_name} already exists (ignored)")
+                        is_hybrid = os.getenv("ENABLE_HYBRID_SEARCH", "true").lower() == "true"
+                        has_dense_named = is_hybrid
                     else:
                         logger.exception(f"Failed to create collection {collection_name}")
                         raise
 
+            # Generate sparse vectors if hybrid collection
+            sparse_vectors = []
+            if is_hybrid:
+                try:
+                    sparse_builder = get_sparse_builder()
+                    
+                    # Check if vocabulary is fitted
+                    if not sparse_builder.vocabulary:
+                        # Fit on current document chunks (bootstrap)
+                        logger.info("Fitting sparse vector builder on current document...")
+                        sparse_builder.fit(chunk_texts)
+                        # Save for future use
+                        cache_path = os.getenv("SPARSE_VOCAB_CACHE", "media/bm25_cache.pkl")
+                        sparse_builder.save_vocabulary(cache_path)
+                    
+                    # Generate sparse vectors for all chunks
+                    sparse_vectors = sparse_builder.transform_batch(chunk_texts)
+                    logger.info(f"Generated {len([v for v in sparse_vectors if v is not None])} sparse vectors")
+                except Exception as e:
+                    logger.warning(f"Failed to generate sparse vectors: {e}. Continuing with dense-only.")
+                    sparse_vectors = [None] * len(chunks)
+            else:
+                sparse_vectors = [None] * len(chunks)
+
             # Upload chunks and embeddings to Qdrant
-            points = [
-                PointStruct(
-                    id=str(uuid.uuid4()),  # Generate a valid UUID for each point
-                    vector={"default": embedding.tolist()},  # Convert numpy array to list
-                    payload=chunk
-                )
-                for embedding, chunk in zip(embeddings, chunks)
-            ]
-            logger.debug(f"Points being upserted: {points}")
-            logger.debug(f"Number of points: {len(points)}")
+            # Determine vector field name
+            dense_vector_name = "dense" if (is_hybrid or has_dense_named) else "default"
+            
+            points = []
+            for i, (embedding, chunk) in enumerate(zip(embeddings, chunks)):
+                point_id = str(uuid.uuid4())
+                
+                # Build vectors dict
+                vectors = {dense_vector_name: embedding.tolist()}
+                
+                # Add sparse vector if available
+                if is_hybrid and i < len(sparse_vectors) and sparse_vectors[i] is not None:
+                    sparse_vec = sparse_vectors[i]
+                    vectors["sparse"] = {
+                        "indices": sparse_vec.indices,
+                        "values": sparse_vec.values
+                    }
+                
+                # Clean up payload - ensure JSON serializable
+                payload = {
+                    "chunk_id": chunk.get("chunk_id"),
+                    "document_id": chunk.get("document_id"),
+                    "text": chunk.get("text"),
+                    "page": chunk.get("page"),
+                    "end_page": chunk.get("end_page"),
+                    "section": chunk.get("section"),
+                    "section_title": chunk.get("section_title"),
+                    "section_path": chunk.get("section_path", []),
+                    "hierarchy_level": chunk.get("hierarchy_level", 0),
+                    "parent_section": chunk.get("parent_section"),
+                    "document_title": chunk.get("document_title"),
+                    "order_index": chunk.get("order_index"),
+                    "text_len": chunk.get("text_len"),
+                }
+                
+                points.append(PointStruct(
+                    id=point_id,
+                    vector=vectors,
+                    payload=payload
+                ))
+            
+            logger.debug(f"Uploading {len(points)} points to Qdrant (hybrid={is_hybrid})")
 
             response = client.upsert(
                 collection_name=collection_name,
@@ -368,7 +719,7 @@ class FileUploadView(APIView):
             mongo_chunks = []
             for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
                 mongo_chunk = MongoChunk(
-                    chunk_id=chunk.get('chunk_id', f"{document.document_id}::chunk_{idx}"),
+                    chunk_id=chunk.get('chunk_id', f"{document.document_id}:{idx}"),
                     document_id=document.document_id,
                     text=chunk['text'],
                     embedding=embedding.tolist(),  # Convert numpy array to list
@@ -377,7 +728,13 @@ class FileUploadView(APIView):
                     section=chunk.get('section'),
                     order_index=chunk.get('order_index', idx),
                     text_len=len(chunk['text']),
-                    metadata=chunk.get('metadata', {}),
+                    metadata={
+                        "section_title": chunk.get("section_title"),
+                        "section_path": chunk.get("section_path", []),
+                        "hierarchy_level": chunk.get("hierarchy_level", 0),
+                        "parent_section": chunk.get("parent_section"),
+                        "document_title": chunk.get("document_title"),
+                    },
                 )
                 mongo_chunks.append(mongo_chunk)
             
@@ -464,30 +821,80 @@ class FileUploadView(APIView):
             return Response({"error": str(e)}, status=500)
 
     def extract_text_and_metadata_from_pdf(self, file_path, document_id):
-        """Extract text and metadata from a PDF."""
+        """Extract text, metadata, and hierarchy from a PDF."""
         raw_blocks = []
+        
+        # Extract hierarchy information
+        sections, document_title = extract_pdf_hierarchy(file_path)
+        total_pages = 0
+        
         with fitz.open(file_path) as pdf:
+            total_pages = len(pdf)
             for page_number, page in enumerate(pdf, start=1):
                 text = page.get_text()
                 raw_blocks.append({
                     "text": text,
-                    "page": page_number,
+                    "page": page_number - 1,  # 0-indexed for consistency
                     "document_id": document_id
                 })
+        
+        # Build page-to-hierarchy mapping
+        structure_map = build_page_hierarchy_map(sections, total_pages) if sections else None
+        
+        # Attach hierarchy info to raw blocks
+        for block in raw_blocks:
+            page = block.get("page", 0)
+            if structure_map and page in structure_map:
+                hier = structure_map[page]
+                block["section_title"] = hier.get("section_title")
+                block["section_path"] = hier.get("section_path", [])
+                block["hierarchy_level"] = hier.get("hierarchy_level", 0)
+                block["parent_section"] = hier.get("parent_section")
+            block["document_title"] = document_title
+        
+        # Store metadata for later use
+        self._last_structure_map = structure_map
+        self._last_document_title = document_title
+        
         return raw_blocks
 
     def extract_text_and_metadata_from_docx(self, file_path, document_id):
-        """Extract text and metadata from a DOCX file."""
+        """Extract text, metadata, and hierarchy from a DOCX file."""
         from docx import Document as DocxDocument
         doc = DocxDocument(file_path)
+        
+        # Extract hierarchy information
+        sections, document_title = extract_docx_hierarchy(file_path)
+        
         raw_blocks = []
         for i, paragraph in enumerate(doc.paragraphs, start=1):
             if paragraph.text.strip():  # Skip empty paragraphs
                 raw_blocks.append({
                     "text": paragraph.text,
                     "section": f"Paragraph {i}",
+                    "page": i // 30,  # Approximate page number
                     "document_id": document_id
                 })
+        
+        # Build structure map (using paragraph index as pseudo-page)
+        total_pages = (len(doc.paragraphs) // 30) + 1
+        structure_map = build_page_hierarchy_map(sections, total_pages) if sections else None
+        
+        # Attach hierarchy info to raw blocks
+        for block in raw_blocks:
+            page = block.get("page", 0)
+            if structure_map and page in structure_map:
+                hier = structure_map[page]
+                block["section_title"] = hier.get("section_title")
+                block["section_path"] = hier.get("section_path", [])
+                block["hierarchy_level"] = hier.get("hierarchy_level", 0)
+                block["parent_section"] = hier.get("parent_section")
+            block["document_title"] = document_title
+        
+        # Store metadata for later use
+        self._last_structure_map = structure_map
+        self._last_document_title = document_title
+        
         return raw_blocks
 
     def extract_text_and_metadata_from_txt(self, file_path, document_id):
@@ -499,7 +906,13 @@ class FileUploadView(APIView):
                     raw_blocks.append({
                         "text": line.strip(),
                         "section": f"Line {i}",
+                        "page": i // 50,  # Approximate page (50 lines per page)
                         "document_id": document_id
                     })
+        
+        # TXT files typically don't have hierarchy
+        self._last_structure_map = None
+        self._last_document_title = None
+        
         return raw_blocks
 

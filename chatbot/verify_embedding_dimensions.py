@@ -18,25 +18,17 @@ def verify_dimensions():
     try:
         collection_info = client.get_collection(settings.QDRANT_COLLECTION)
         
-        # Debug: print the structure to see what we're working with
-        print(f"Collection info type: {type(collection_info)}")
-        print(f"Collection config type: {type(collection_info.config)}")
+        # Extract vector dimension from collection config
+        vectors_config = collection_info.config.params.vectors
         
-        # Handle different Qdrant API versions
-        if hasattr(collection_info.config, 'params'):
-            # Newer API structure
-            vectors_config = collection_info.config.params.vectors
-            
-            # Check if it's a dict (named vectors) or VectorParams object
-            if isinstance(vectors_config, dict):
-                # Named vectors - get the 'default' vector config
-                qdrant_dim = vectors_config.get('default', {}).get('size') or vectors_config.get('default').size
-            else:
-                # Single vector config
-                qdrant_dim = vectors_config.size
+        # Handle named vectors (dict) or single vector config (VectorParams object)
+        if isinstance(vectors_config, dict):
+            # Named vectors - get the 'default' vector config
+            default_vector = vectors_config.get('default')
+            qdrant_dim = default_vector.size if hasattr(default_vector, 'size') else default_vector.get('size')
         else:
-            # Older API structure
-            qdrant_dim = collection_info.config.vector_size
+            # Single vector config (VectorParams object)
+            qdrant_dim = vectors_config.size
         
         print(f"\n=== Dimension Check ===")
         print(f"Embedding model: {os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')}")
