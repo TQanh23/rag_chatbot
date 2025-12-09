@@ -14,14 +14,13 @@ from pathlib import Path
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import logging  # ADD THIS
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
+# Quick-start development settings
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only")
 DEBUG = os.getenv("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
@@ -29,9 +28,9 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
 
 # Qdrant Configuration
-QDRANT_URL = "http://localhost:6333"  # Replace with your Qdrant server URL
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")  # Add your API key if required
-QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")  # Path to store Qdrant data
+QDRANT_URL = "http://localhost:6333"
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
+QDRANT_EMBEDDED_PATH = os.path.join(BASE_DIR, "qdrant_data")
 QDRANT_COLLECTION = "test_collection"
 
 # MongoDB Configuration
@@ -40,8 +39,8 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "rag_chatbot")
 
 # Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Application definition
 
+# Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -50,12 +49,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     "api",
     "documents",
     "search",
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # MUST BE FIRST
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -136,4 +137,62 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CORS Configuration
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins in development
+# Alternative: Use CORS_ALLOWED_ORIGIN_REGEXES for network IPs
+# CORS_ALLOWED_ORIGIN_REGEXES = [
+#     r"^http://localhost:3000$",
+#     r"^http://127\.0\.0\.1:3000$",
+#     r"^http://172\.24\.96\.\d+:3000$",  # Your network range
+# ]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+
+# Logging configuration for debugging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
+
 

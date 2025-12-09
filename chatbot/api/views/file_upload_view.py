@@ -122,7 +122,7 @@ def _detect_structure_from_pdf_text(doc) -> List[Dict[str, Any]]:
         (r'^(?:Part|PART)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
         (r'^(?:Section|SECTION)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
         # All-caps headings (likely section titles)
-        (r'^([A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰ\s]{15,})$', 1),
+        (r'^([A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỬỮỰ\s]{15,})$', 1),
     ]
     
     for page_num, page in enumerate(doc):
@@ -806,7 +806,14 @@ class FileUploadView(APIView):
             default_storage.delete(saved_path)
 
             # return chunk evaluation stats for quick validation (remove in production)
-            return Response({"message": "File uploaded and processed successfully", "document_id": document.document_id, "chunk_eval": chunk_stats}, status=status.HTTP_201_CREATED)
+            return Response({
+                "message": "File uploaded and processed successfully",
+                "document_id": document.document_id,
+                "file_name": file.name,
+                "chunks_count": len(chunks),
+                "status": "success",
+                "chunk_eval": chunk_stats
+            }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             # Mark document as failed in MongoDB
