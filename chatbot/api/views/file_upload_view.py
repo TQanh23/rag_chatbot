@@ -122,7 +122,7 @@ def _detect_structure_from_pdf_text(doc) -> List[Dict[str, Any]]:
         (r'^(?:Part|PART)\s+(\d+|[IVXLCDM]+)[\.:]\s*(.+)$', 1),
         (r'^(?:Section|SECTION)\s+(\d+(?:\.\d+)*)[\.:]\s*(.+)$', 2),
         # All-caps headings (likely section titles)
-        (r'^([A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỬỮỰ\s]{15,})$', 1),
+        (r'^([[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰ\s]{15,})$', 1),
     ]
     
     for page_num, page in enumerate(doc):
@@ -322,7 +322,7 @@ class FileUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
     
     # Get embedding model from env or use default (dangvantuan/vietnamese-embedding, 768-dim)
-    model_name = os.getenv("EMBEDDING_MODEL", "dangvantuan/vietnamese-embedding")
+    model_name = os.getenv("EMBEDDING_MODEL")
     
     # Initialize tokenizer - handle both formats
     try:
@@ -470,6 +470,16 @@ class FileUploadView(APIView):
             else:
                 raise ValueError("Unsupported file type")
 
+            # Get structure map and document title from extraction
+            structure_map = getattr(self, '_last_structure_map', None)
+            document_title = getattr(self, '_last_document_title', None)
+            
+            logger.info(f"Structure map: {structure_map}")
+            logger.info(f"Document title: {document_title}")
+            logger.info(f"Raw blocks count: {len(raw_blocks)}")
+            if raw_blocks:
+                logger.info(f"First block keys: {raw_blocks[0].keys()}")
+            
             # Clean and chunk text with improved semantic chunking (P0 fix)
             from ..tools.chunking import clean_and_chunk_text, semantic_chunk_text
             from api.utils.query_preprocessing import preprocess_document_text
@@ -478,10 +488,6 @@ class FileUploadView(APIView):
             for block in raw_blocks:
                 if 'text' in block and block['text']:
                     block['text'] = preprocess_document_text(block['text'])
-            
-            # Get structure map and document title from extraction
-            structure_map = getattr(self, '_last_structure_map', None)
-            document_title = getattr(self, '_last_document_title', None)
             
             # Use semantic chunking if enabled, otherwise use standard chunking
             use_semantic = os.getenv("USE_SEMANTIC_CHUNKING", "true").lower() == "true"
@@ -829,10 +835,15 @@ class FileUploadView(APIView):
 
     def extract_text_and_metadata_from_pdf(self, file_path, document_id):
         """Extract text, metadata, and hierarchy from a PDF."""
+        from api.tools.chunking import build_page_hierarchy_map
+        
         raw_blocks = []
         
         # Extract hierarchy information
         sections, document_title = extract_pdf_hierarchy(file_path)
+        logger.info(f"PDF hierarchy: {len(sections)} sections found, title='{document_title}'")
+        logger.debug(f"Sections: {sections}")
+        
         total_pages = 0
         
         with fitz.open(file_path) as pdf:
@@ -842,84 +853,109 @@ class FileUploadView(APIView):
                 raw_blocks.append({
                     "text": text,
                     "page": page_number - 1,  # 0-indexed for consistency
-                    "document_id": document_id
+                    "document_id": document_id,
+                    "section_title": None,
+                    "section_path": [],
+                    "hierarchy_level": 0,
+                    "parent_section": None,
+                    "document_title": document_title
                 })
         
         # Build page-to-hierarchy mapping
-        structure_map = build_page_hierarchy_map(sections, total_pages) if sections else None
+        try:
+            structure_map = build_page_hierarchy_map(sections, total_pages) if sections else {}
+            self._last_structure_map = structure_map
+            self._last_document_title = document_title
+            
+            # Attach hierarchy info to blocks
+            for block in raw_blocks:
+                page = block.get("page", 0)
+                if structure_map and page in structure_map:
+                    hier = structure_map[page]
+                    block["section_title"] = hier.get("section_title")
+                    block["section_path"] = hier.get("section_path", [])
+                    block["hierarchy_level"] = hier.get("hierarchy_level", 0)
+                    block["parent_section"] = hier.get("parent_section")
+        except Exception as e:
+            logger.warning(f"Failed to build page hierarchy map: {e}")
+            self._last_structure_map = {}
+            self._last_document_title = document_title
         
-        # Attach hierarchy info to raw blocks
-        for block in raw_blocks:
-            page = block.get("page", 0)
-            if structure_map and page in structure_map:
-                hier = structure_map[page]
-                block["section_title"] = hier.get("section_title")
-                block["section_path"] = hier.get("section_path", [])
-                block["hierarchy_level"] = hier.get("hierarchy_level", 0)
-                block["parent_section"] = hier.get("parent_section")
-            block["document_title"] = document_title
-        
-        # Store metadata for later use
-        self._last_structure_map = structure_map
-        self._last_document_title = document_title
-        
+        logger.info(f"Extracted {len(raw_blocks)} blocks from PDF")
         return raw_blocks
 
     def extract_text_and_metadata_from_docx(self, file_path, document_id):
         """Extract text, metadata, and hierarchy from a DOCX file."""
         from docx import Document as DocxDocument
+        from api.tools.chunking import build_page_hierarchy_map
+        
         doc = DocxDocument(file_path)
         
         # Extract hierarchy information
         sections, document_title = extract_docx_hierarchy(file_path)
+        logger.info(f"DOCX hierarchy: {len(sections)} sections found, title='{document_title}'")
+        logger.debug(f"Sections: {sections}")
         
         raw_blocks = []
-        for i, paragraph in enumerate(doc.paragraphs, start=1):
+        
+        for i, paragraph in enumerate(doc.paragraphs):
             if paragraph.text.strip():  # Skip empty paragraphs
                 raw_blocks.append({
                     "text": paragraph.text,
-                    "section": f"Paragraph {i}",
-                    "page": i // 30,  # Approximate page number
-                    "document_id": document_id
+                    "page": i // 30,  # Approximate page (30 paragraphs per page)
+                    "document_id": document_id,
+                    "section_title": None,
+                    "section_path": [],
+                    "hierarchy_level": 0,
+                    "parent_section": None,
+                    "document_title": document_title
                 })
         
-        # Build structure map (using paragraph index as pseudo-page)
-        total_pages = (len(doc.paragraphs) // 30) + 1
-        structure_map = build_page_hierarchy_map(sections, total_pages) if sections else None
+        # Build structure map
+        total_pages = max((len(doc.paragraphs) // 30) + 1, 1)
+        try:
+            structure_map = build_page_hierarchy_map(sections, total_pages) if sections else {}
+            self._last_structure_map = structure_map
+            self._last_document_title = document_title
+            
+            # Attach hierarchy info to blocks
+            for block in raw_blocks:
+                page = block.get("page", 0)
+                if structure_map and page in structure_map:
+                    hier = structure_map[page]
+                    block["section_title"] = hier.get("section_title")
+                    block["section_path"] = hier.get("section_path", [])
+                    block["hierarchy_level"] = hier.get("hierarchy_level", 0)
+                    block["parent_section"] = hier.get("parent_section")
+        except Exception as e:
+            logger.warning(f"Failed to build structure map for DOCX: {e}")
+            self._last_structure_map = {}
+            self._last_document_title = document_title
         
-        # Attach hierarchy info to raw blocks
-        for block in raw_blocks:
-            page = block.get("page", 0)
-            if structure_map and page in structure_map:
-                hier = structure_map[page]
-                block["section_title"] = hier.get("section_title")
-                block["section_path"] = hier.get("section_path", [])
-                block["hierarchy_level"] = hier.get("hierarchy_level", 0)
-                block["parent_section"] = hier.get("parent_section")
-            block["document_title"] = document_title
-        
-        # Store metadata for later use
-        self._last_structure_map = structure_map
-        self._last_document_title = document_title
-        
+        logger.info(f"Extracted {len(raw_blocks)} blocks from DOCX")
         return raw_blocks
 
     def extract_text_and_metadata_from_txt(self, file_path, document_id):
         """Extract text and metadata from a TXT file."""
         raw_blocks = []
+        
         with open(file_path, 'r', encoding='utf-8') as file:
-            for i, line in enumerate(file, start=1):
-                if line.strip():  # Skip empty lines
-                    raw_blocks.append({
-                        "text": line.strip(),
-                        "section": f"Line {i}",
-                        "page": i // 50,  # Approximate page (50 lines per page)
-                        "document_id": document_id
-                    })
+            content = file.read()
+            raw_blocks.append({
+                "text": content,
+                "page": 0,
+                "document_id": document_id,
+                "section_title": None,
+                "section_path": [],
+                "hierarchy_level": 0,
+                "parent_section": None,
+                "document_title": None
+            })
         
         # TXT files typically don't have hierarchy
-        self._last_structure_map = None
+        self._last_structure_map = {}
         self._last_document_title = None
         
+        logger.info(f"Extracted {len(raw_blocks)} blocks from TXT")
         return raw_blocks
 

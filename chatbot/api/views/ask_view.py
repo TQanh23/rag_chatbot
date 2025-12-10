@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from backend.utils.embeddings import HuggingfaceEmbeddingsModel
+from backend.utils.device import get_device_string
 from backend.utils.qdrant_client import (
     get_qdrant_client, hybrid_search, hybrid_search_with_fallback,
     generate_sparse_vector, get_sparse_builder, HybridSearchResult
@@ -41,15 +42,17 @@ class AskView(APIView):
         """
         Get cached CrossEncoder reranker instance (singleton pattern).
         Avoids reloading model on every request, saving 1-3 seconds per request.
+        Uses GPU if available for faster reranking.
         """
         reranker_model = os.getenv("RERANKER_MODEL", "itdainb/PhoRanker")
         
         # Reload if model changed or not loaded
         if cls._reranker is None or cls._reranker_model_name != reranker_model:
             logger.info(f"Loading CrossEncoder reranker: {reranker_model}")
-            cls._reranker = CrossEncoder(reranker_model)
+            device = get_device_string()
+            cls._reranker = CrossEncoder(reranker_model, device=device)
             cls._reranker_model_name = reranker_model
-            logger.info(f"CrossEncoder reranker loaded successfully: {reranker_model}")
+            logger.info(f"CrossEncoder reranker loaded successfully on device: {device}")
         
         return cls._reranker
     

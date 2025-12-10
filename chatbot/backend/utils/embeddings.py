@@ -5,6 +5,7 @@ import torch
 import numpy as np
 
 from transformers import AutoTokenizer, AutoModel
+from backend.utils.device import get_device
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +84,8 @@ class HuggingfaceEmbeddingsModel:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
         
-        # Move model to GPU if available
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Move model to GPU if available (using device utility)
+        self.device = get_device()
         self.model.to(self.device)
         self.model.eval()  # Set to evaluation mode
         
