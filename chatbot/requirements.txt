@@ -7,6 +7,9 @@ sentence-transformers==3.0.1
 google-generativeai==0.3.0
 langdetect==1.0.9
 transformers==4.35.2
+# PyTorch with CUDA support - install with GPU index URL for best compatibility:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For CPU-only, use: pip install torch torchvision torchaudio
 torch==2.9.0
 PyMuPDF==1.23.8
 python-docx==0.8.11

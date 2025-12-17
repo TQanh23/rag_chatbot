@@ -195,6 +195,34 @@ def verify_chunk_exists(qdrant_client, collection_name, chunk_id: str) -> bool:
     return found
 
 
+def _get_dense_vector_name(qdrant_client, collection_name: str) -> str:
+    """
+    Determine which dense vector name to use for this collection.
+
+    - Hybrid collections: typically "dense" (+ "sparse")
+    - Legacy dense-only collections: typically "default"
+    """
+    try:
+        info = qdrant_client._client.get_collection(collection_name=collection_name)
+        vectors_cfg = info.config.params.vectors
+
+        # Newer Qdrant: dict of named vectors
+        if isinstance(vectors_cfg, dict):
+            if "dense" in vectors_cfg:
+                return "dense"
+            if "default" in vectors_cfg:
+                return "default"
+            # Fallback: pick any available vector name
+            for k in vectors_cfg.keys():
+                return str(k)
+
+        # Older Qdrant: single unnamed vector => treated as "default"
+        return "default"
+    except Exception:
+        # Safe fallback for older setups / transient failures
+        return "default"
+
+
 def find_best_chunks(question: str, document_id: str, qdrant_client, embeddings_model, 
                      reranker, collection_name: str, page_hints: list = None, top_k: int = 10) -> list:
     """
@@ -210,22 +238,24 @@ def find_best_chunks(question: str, document_id: str, qdrant_client, embeddings_
         List of tuples: (result, base_score, boosted_score, is_on_page, gold_format_id)
     """
     query_embedding = embeddings_model.embed_texts([question])[0]
-    
+
     search_filter = models.Filter(
         must=[models.FieldCondition(key="document_id", match=models.MatchValue(value=document_id))]
     )
-    
+
+    dense_vector_name = _get_dense_vector_name(qdrant_client, collection_name)
+
     results = qdrant_client._client.search(
         collection_name=collection_name,
-        query_vector=("default", query_embedding),
+        query_vector=(dense_vector_name, query_embedding),
         limit=100,
         score_threshold=0.25,
         query_filter=search_filter
     )
-    
+
     if not results:
         return []
-    
+
     # Rerank
     pairs = [(question, r.payload.get('text', r.payload.get('content', ''))) for r in results]
     rerank_scores = reranker.predict(pairs)
@@ -680,8 +710,8 @@ def main():
         print("  4. Remove missing chunks only (keep rest)")
         print("  5. Skip this question")
         
-        action = input("\nEnter choice (1-5): ").strip()
-        
+        action = input("\nEnter choice (1-5): ")
+
         new_gold = None
         new_page_hint = None
         

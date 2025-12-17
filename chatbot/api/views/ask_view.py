@@ -44,7 +44,7 @@ class AskView(APIView):
         Avoids reloading model on every request, saving 1-3 seconds per request.
         Uses GPU if available for faster reranking.
         """
-        reranker_model = os.getenv("RERANKER_MODEL", "itdainb/PhoRanker")
+        reranker_model = os.getenv("RERANKER_MODEL")
         
         # Reload if model changed or not loaded
         if cls._reranker is None or cls._reranker_model_name != reranker_model:
@@ -468,7 +468,7 @@ class AskView(APIView):
     # UPDATED: retry logic with handling for safety filter finish_reason=2, progressive token increase,
     # and exponential backoff for transient Gemini/network errors
     def _gemini_generate_with_retry(self, prompt, attempts=3, base_timeout=30, backoff=2.0,
-                                    initial_max_tokens=512, max_tokens_cap=4096, context_text=None, question=None):
+                                    initial_max_tokens=2048, max_tokens_cap=4096, context_text=None, question=None):
         model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         last_exc = None
 
@@ -1189,10 +1189,10 @@ Các phiên bản:"""
             try:
                 llm_timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
                 llm_attempts = int(os.getenv("GEMINI_MAX_ATTEMPTS", "3"))
-                initial_max_tokens = int(os.getenv("GEMINI_INITIAL_MAX_TOKENS", "512"))
+                initial_max_tokens = int(os.getenv("GEMINI_INITIAL_MAX_TOKENS", "2048"))
                 max_tokens_cap = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
             except Exception:
-                llm_timeout, llm_attempts, initial_max_tokens, max_tokens_cap = 30, 3, 512, 4096
+                llm_timeout, llm_attempts, initial_max_tokens, max_tokens_cap = 30, 3, 2048, 4096
 
             try:
                 response_text, finish_reason, _ = self._gemini_generate_with_retry(
@@ -1242,6 +1242,7 @@ Các phiên bản:"""
                         "generated_answer": response,
                         "citations": citation_list,
                         "model_name": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                        "reranker_model": self._reranker_model_name or os.getenv("RERANKER_MODEL"),
                         "finish_reason": str(finish_reason) if finish_reason else None,
                         "context_length": len(context_text),
                         "num_chunks_used": len(top_results),

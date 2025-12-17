@@ -21,11 +21,15 @@ import time
 
 from datetime import datetime
 import argparse
+import hashlib
+
+from backend.utils.mongo_models import MongoRetrievalRun, MongoGenerationRun, MongoEvalRun
+from backend.utils.retrieval_metrics import _parse_list_field
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-qa_gold_path = "backend/qa_gold_updated.csv"
+qa_gold_path = "backend/media/rag_chatbot.qa_gold.csv"
 
 # Initialize clients
 mongo_repo = MongoRepository()
@@ -62,15 +66,29 @@ def load_gold_standard_mapping():
 
 def _create_gold_mappings(gold_df):
     """Helper to create mappings from a gold standard DataFrame."""
-    question_to_id = dict(zip(gold_df['question_text'], gold_df['question_id']))
+    question_to_id = {}
     doc_questions = {}
     question_to_doc = {}
     question_norm_map = {}
     
     for _, row in gold_df.iterrows():
-        doc_id = row['document_id']
-        qtext = row['question_text']
-        qtext_norm = qtext.strip().lower()
+        qtext = row.get('question_text')
+        
+        # Skip rows with null or empty question_text
+        if not qtext or qtext is None:
+            logger.warning(f"Skipping row with null question_text: {row.get('question_id')}")
+            continue
+        
+        qtext = str(qtext).strip()
+        if not qtext:
+            logger.warning(f"Skipping row with empty question_text: {row.get('question_id')}")
+            continue
+        
+        doc_id = row.get('document_id')
+        question_id = row.get('question_id')
+        
+        qtext_norm = normalize_question(qtext)
+        question_to_id[qtext] = question_id
         question_to_doc[qtext] = doc_id
         question_norm_map[qtext_norm] = qtext
         
@@ -101,22 +119,45 @@ def load_gold_standard_from_mongo():
         # Convert MongoDB documents to DataFrame
         records = []
         for doc in qa_gold_docs:
+            # Handle both 'question_text' and 'question' field names
+            question_text = doc.get('question_text') or doc.get('question')
+            
+            # Skip documents with null or missing question_text
+            if not question_text:
+                logger.debug(f"Skipping document with null question: {doc.get('_id')}")
+                continue
+            
             record = {
                 'question_id': doc.get('_id') or doc.get('question_id'),
-                'document_id': doc.get('document_id'),
-                'question_text': doc.get('question_text'),
-                'gold_answer': doc.get('gold_answer'),
-                'gold_support_chunk_ids': doc.get('gold_support_chunk_ids', ''),
+                'document_id': doc.get('document_id') or doc.get('chunk_id', '').split(':')[0],
+                'question_text': str(question_text).strip(),
+                'gold_answer': doc.get('gold_answer') or (doc.get('answers')[0] if doc.get('answers') else ''),
+                'gold_support_chunk_ids': doc.get('gold_support_chunk_ids') or '|'.join(doc.get('relevant_docs', [])),
                 'page_hint': doc.get('page_hint', '')
             }
             records.append(record)
+        
+        if not records:
+            logger.error("No valid records found in MongoDB qa_gold collection (all have null question_text)")
+            return None, {}, {}, {}, {}
         
         gold_df = pd.DataFrame(records)
         
         # Create mappings
         question_to_id, doc_questions, question_to_doc, question_norm_map = _create_gold_mappings(gold_df)
         
+        if not question_to_id:
+            logger.error("Failed to create mappings from gold standard data")
+            return None, {}, {}, {}, {}
+        
         logger.info(f"Loaded {len(question_to_id)} gold standard Q&A pairs from MongoDB")
+        
+        # Debug: show sample questions
+        if question_norm_map:
+            sample_keys = list(question_norm_map.keys())[:2]
+            logger.info(f"Sample normalized gold questions (first 100 chars):")
+            for k in sample_keys:
+                logger.info(f"  - '{k[:100]}'")
         
         return gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc
         
@@ -143,6 +184,8 @@ def sync_gold_standard_to_mongo():
             logger.warning("CSV file is empty, nothing to sync")
             return 0
         
+        logger.info(f"CSV columns: {gold_df.columns.tolist()}")
+        
         qa_gold_collection = mongo_repo.db['qa_gold']
         
         # Clear existing collection
@@ -150,16 +193,40 @@ def sync_gold_standard_to_mongo():
         logger.info(f"Cleared {delete_result.deleted_count} existing documents from MongoDB")
         
         # Prepare documents for insertion
+        # Handle different column naming conventions
         documents = []
         for _, row in gold_df.iterrows():
+            # Handle question_id - try different column names
+            question_id = row.get('_id') or row.get('question_id') or f"q_{_}"
+            
+            # Handle document_id - extract from chunk_id if not present
+            document_id = row.get('document_id')
+            if pd.isna(document_id) or not document_id:
+                chunk_id = row.get('chunk_id', '')
+                if chunk_id and ':' in str(chunk_id):
+                    document_id = str(chunk_id).split(':')[0]
+                else:
+                    document_id = ''
+            
+            # Handle question text - try different column names
+            question_text = row.get('question_text') or row.get('question') or ''
+            
+            # Handle gold answer - try different column names
+            gold_answer = row.get('gold_answer') or row.get('answers[0]') or ''
+            
+            # Handle gold support chunk IDs - try different column names
+            gold_chunk_ids = row.get('gold_support_chunk_ids') or row.get('relevant_docs[0]') or row.get('chunk_id') or ''
+            
             doc = {
-                '_id': row['question_id'],
-                'question_id': row['question_id'],
-                'document_id': row['document_id'],
-                'question_text': row['question_text'],
-                'gold_answer': row['gold_answer'],
-                'gold_support_chunk_ids': row.get('gold_support_chunk_ids', ''),
+                '_id': question_id,
+                'question_id': question_id,
+                'document_id': document_id,
+                'question_text': str(question_text).strip() if question_text else '',
+                'gold_answer': str(gold_answer).strip() if gold_answer else '',
+                'gold_support_chunk_ids': str(gold_chunk_ids).strip() if gold_chunk_ids else '',
                 'page_hint': row.get('page_hint', ''),
+                'run_tag': row.get('run_tag', ''),
+                'type': row.get('type', ''),
                 'synced_at': datetime.utcnow()
             }
             documents.append(doc)
@@ -309,9 +376,17 @@ def normalize_question(text):
     """Normalize question text for matching."""
     return text.strip().lower().replace("  ", " ").replace("?", "").replace(".", "")
 
-def find_best_match(question_text, question_norm_map, threshold=0.85):
+def find_best_match(question_text, question_norm_map, threshold=0.85, debug=False):
     """Find best matching gold question using fuzzy matching."""
     q_norm = normalize_question(question_text)
+    
+    if debug:
+        print(f"DEBUG find_best_match:")
+        print(f"  Input normalized (first 80): '{q_norm[:80]}'")
+        print(f"  question_norm_map has {len(question_norm_map)} keys")
+        if question_norm_map:
+            first_key = list(question_norm_map.keys())[0]
+            print(f"  First key in map (first 80): '{first_key[:80]}'")
     
     # Try exact match first
     if q_norm in question_norm_map:
@@ -336,6 +411,7 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
         rows = []
         mapped_count = 0
         skipped_count = 0
+        skipped_samples = []  # Track some skipped questions for debugging
         conversion_stats = {"converted": 0, "not_converted": 0}
         fuzzy_matches = 0
         doc_mismatch_count = 0
@@ -350,11 +426,17 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
                 skipped_count += 1
                 continue
             
+            # Enable debug for first question to diagnose matching issues
+            debug_this = (mapped_count == 0 and skipped_count == 0)
+            
             # Try to find matching gold question (with fuzzy matching)
-            gold_qtext = find_best_match(question_text, question_norm_map, threshold=0.80)
+            gold_qtext = find_best_match(question_text, question_norm_map, threshold=0.80, debug=debug_this)
             
             if not gold_qtext:
                 skipped_count += 1
+                if len(skipped_samples) < 3:
+                    q_norm = normalize_question(question_text)
+                    skipped_samples.append(f"LOG: '{q_norm[:80]}...'")
                 continue
             
             # Check if document ID matches expected gold standard document
@@ -416,6 +498,10 @@ def get_retrieval_logs_from_mongo(question_to_id, question_norm_map, question_to
         logger.info(f"  Exact matches: {mapped_count - fuzzy_matches}")
         logger.info(f"  Fuzzy matches: {fuzzy_matches}")
         logger.info(f"  Skipped: {skipped_count} (template/unmapped questions)")
+        if skipped_samples:
+            logger.info(f"  Sample skipped questions:")
+            for sq in skipped_samples:
+                logger.info(f"    - {sq}...")
         if doc_mismatch_count > 0:
             logger.warning(f"  Document mismatches: {doc_mismatch_count} logs had wrong document_id")
         if wrong_doc_chunks_filtered > 0:
@@ -738,8 +824,8 @@ print()
 parser = argparse.ArgumentParser(description='Evaluate RAG chatbot performance')
 parser.add_argument('--sync-gold', action='store_true', 
                     help='Sync gold standard from CSV to MongoDB before loading')
-parser.add_argument('--source', choices=['mongo', 'csv'], default='mongo',
-                    help='Load gold standard from MongoDB (default) or CSV')
+parser.add_argument('--run-id', type=str, default=None,
+                    help='Evaluation run ID (auto-generated if not provided)')
 args = parser.parse_args()
 
 # Sync gold standard to MongoDB if requested
@@ -751,15 +837,10 @@ if args.sync_gold:
     print(f"Synced {synced_count} records")
     print()
 
-# Load gold standard
+# Load gold standard from MongoDB
 print("=" * 80)
-print(f"Loading gold standard Q&A pairs (source: {args.source})...")
+print("Loading gold standard Q&A pairs from MongoDB...")
 print("=" * 80)
-
-# Always load from MongoDB - CSV option removed for consistency
-if args.source == 'csv':
-    logger.warning("CSV source option is deprecated. Use --sync-gold to sync CSV to MongoDB first.")
-    logger.info("Loading from MongoDB instead...")
 
 gold_df, question_to_id, doc_questions, question_norm_map, question_to_doc = load_gold_standard_from_mongo()
 
@@ -768,6 +849,21 @@ if gold_df is None:
     sys.exit(1)
 
 print(f"Gold standard contains {len(gold_df)} questions")
+print(f"Question norm map has {len(question_norm_map)} entries")
+if question_norm_map:
+    sample_norms = list(question_norm_map.keys())[:2]
+    print("Sample normalized gold questions:")
+    for sn in sample_norms:
+        print(f"  - '{sn[:100]}'")
+print()
+
+# Generate or use provided run ID
+if args.run_id:
+    run_id = args.run_id
+else:
+    run_id = f"eval_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+print(f"Evaluation Run ID: {run_id}")
 print()
 
 # Build chunk map for all documents
@@ -1077,6 +1173,7 @@ debug_chunk_format_mismatch(retrieval_df, gold_df)
 sys.stdout.flush()
 
 results = {
+    "run_id": run_id,
     "total_retrieval_logs": retrieval_count,
     "total_generation_logs": gen_count,
     "total_citation_logs": citation_count,
@@ -1086,6 +1183,11 @@ results = {
     "gemini_rating": None
 }
 
+# Track individual eval runs for MongoDB
+retrieval_runs_to_save = []
+generation_runs_to_save = []
+citation_runs_to_save = []
+
 # Run retrieval evaluation
 if retrieval_df is not None and not retrieval_df.empty:
     print("=" * 80)
@@ -1094,6 +1196,25 @@ if retrieval_df is not None and not retrieval_df.empty:
     try:
         retrieval = evaluate_retrieval_from_dataframe(gold_df, retrieval_df)
         results['retrieval_evaluation'] = retrieval
+        
+        # Extract per-question results and save to MongoDB
+        if retrieval and retrieval.get('per_question'):
+            for i, per_q in enumerate(retrieval['per_question']):
+                try:
+                    run_entry = MongoRetrievalRun(
+                        run_id=run_id,
+                        query_id=per_q.get('question_id', f"q_{i}"),
+                        gold_chunk_ids=_parse_list_field(per_q.get('relevant_chunk_ids', '[]')),
+                        retrieved_chunk_ids=_parse_list_field(per_q.get('retrieved_chunk_ids', '[]')),
+                        k=10,
+                        recall_at_k=float(per_q.get('recall@10', 0)),
+                        mrr_at_k=float(per_q.get('mrr@10', 0)),
+                        ndcg_at_k=float(per_q.get('ndcg@10', 0))
+                    )
+                    retrieval_runs_to_save.append(run_entry)
+                except Exception as e:
+                    logger.warning(f"Could not save retrieval run for query {per_q.get('question_id')}: {e}")
+        
         if retrieval and retrieval.get('summary'):
             print(f"Recall@10: {retrieval['summary']['recall@10']['mean']:.3f}")
             print(f"MRR@10: {retrieval['summary']['mrr@10']['mean']:.3f}")
@@ -1139,6 +1260,25 @@ if gen_df is not None and not gen_df.empty:
     try:
         generation = evaluate_generation_from_dataframe(gold_df, gen_df)
         results['generation_evaluation'] = generation
+        
+        # Extract per-question results and save to MongoDB
+        if generation and generation.get('per_question'):
+            for i, per_q in enumerate(generation['per_question']):
+                try:
+                    run_entry = MongoGenerationRun(
+                        run_id=run_id,
+                        query_id=per_q.get('question_id', f"q_{i}"),
+                        final_answer=per_q.get('final_answer_run', ''),
+                        gold_answer=per_q.get('gold_answer', ''),
+                        exact_match=float(per_q.get('em', 0)),
+                        rouge_l=float(per_q.get('rouge_l', 0)),
+                        bleu=float(per_q.get('bleu', 0)),
+                        citation_ok=bool(per_q.get('citation_ok', False))
+                    )
+                    generation_runs_to_save.append(run_entry)
+                except Exception as e:
+                    logger.warning(f"Could not save generation run for query {per_q.get('question_id')}: {e}")
+        
         if generation and generation.get('summary'):
             print(f"ROUGE-1: {generation['summary']['rouge1']['mean']:.3f}")
             print(f"Token F1: {generation['summary']['token_f1']['mean']:.3f}")
@@ -1174,9 +1314,51 @@ else:
 
 print()
 print("=" * 80)
+print("Saving evaluation results to MongoDB...")
+print("=" * 80)
+
+try:
+    # Save individual retrieval runs
+    if retrieval_runs_to_save:
+        saved_count = mongo_repo.save_retrieval_runs_batch(retrieval_runs_to_save)
+        print(f"✓ Saved {saved_count} retrieval run results")
+    
+    # Save individual generation runs
+    if generation_runs_to_save:
+        saved_count = mongo_repo.save_generation_runs_batch(generation_runs_to_save)
+        print(f"✓ Saved {saved_count} generation run results")
+    
+    # Create aggregate evaluation run summary
+    aggregate_eval = MongoEvalRun(
+        run_id=run_id,
+        dataset_hash=hashlib.md5(str(len(gold_df)).encode()).hexdigest(),
+        model="rag-chatbot",
+        backend="mongodb",
+        num_queries=len(gold_df),
+        aggregates={
+            "retrieval_evaluation": results.get('retrieval_evaluation', {}).get('summary', {}),
+            "generation_evaluation": results.get('generation_evaluation', {}).get('summary', {}),
+            "citation_evaluation": results.get('citation_evaluation', {}).get('summary', {}),
+            "gemini_rating": results.get('gemini_rating', {})
+        },
+        notes=f"Full evaluation run with {retrieval_count} retrieval logs, {gen_count} generation logs, {citation_count} citation logs"
+    )
+    mongo_repo.save_eval_run(aggregate_eval)
+    print(f"✓ Saved aggregate evaluation run: {run_id}")
+    
+except Exception as e:
+    logger.error(f"Failed to save evaluation results to MongoDB: {e}")
+    import traceback
+    traceback.print_exc()
+
+print()
+print("=" * 80)
 print("EVALUATION SUMMARY")
 print("=" * 80)
+print(f"Run ID: {run_id}")
 print(f"Total Retrieval Logs Evaluated: {retrieval_count}")
 print(f"Total Generation Logs Evaluated: {gen_count}")
 print(f"Total Citation Logs Evaluated: {citation_count}")
+print(f"Retrieval runs saved: {len(retrieval_runs_to_save)}")
+print(f"Generation runs saved: {len(generation_runs_to_save)}")
 print("=" * 80)
