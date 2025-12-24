@@ -284,23 +284,6 @@ GPU_ENABLED=false
 - Increase retrieval candidates: `RETRIEVAL_TOP_K=100`
 - Run evaluation: `python eval_run.py` to identify issues
 
-## 📊 Performance Benchmarks
-
-Typical performance on Vietnamese legal documents (100+ pages):
-
-| Metric | Value |
-|--------|-------|
-| Document Processing | ~2s per PDF page |
-| Embedding Generation | ~50ms per chunk (GPU) |
-| Retrieval (Hybrid) | ~200-300ms for 80 candidates |
-| Reranking (Top 10) | ~100-150ms (GPU) |
-| Answer Generation | ~1-2s (Gemini Flash) |
-| **Total E2E Latency** | **~2-3s per question** |
-
-**Retrieval Quality** (on gold standard test set):
-- Recall@10: ~85-90%
-- MRR: ~0.75
-- NDCG@10: ~0.80
 
 ## 🤝 Contributing
 
