@@ -67,3 +67,4 @@ chatbot/reranker_finetune/checkpoint-*
 chatbot/reranker_finetune/checkpoints
 chatbot/reranker_finetune/output
 chatbot/reranker_finetune/best_adapter
+chatbot/plot_recall_at_k.py
